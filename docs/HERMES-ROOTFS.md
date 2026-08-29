@@ -40,6 +40,15 @@ sudo scripts/build-hermes-rootfs.sh
 --keep-rootfs         保留临时 rootfs 供人工审查
 ```
 
+没有本地 Linux/WSL 时，手动运行 `.github/workflows/build-phone-artifacts.yml`。该 workflow：
+
+1. 只有 `contents: read` 权限；
+2. 固定 checkout/upload action SHA、Hermes commit 和 zstd commit；
+3. 在 Ubuntu 24.04 上构建 rootfs；
+4. 在两个独立目录交叉编译 static ARM64 zstd 并要求 SHA-256 一致；
+5. 组装 Magisk module，上传 rootfs、module、依赖清单、provenance 和全量哈希；
+6. artifact 保留 14 天，二进制仍不进入 Git。
+
 ## 构建门禁
 
 脚本会在开始前验证：

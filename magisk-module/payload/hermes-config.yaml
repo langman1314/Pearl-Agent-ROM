@@ -1,0 +1,19 @@
+# Non-secret Hermes behavior defaults for Pearl.
+# API credentials belong only in HERMES_HOME/.env (mode 0600).
+model:
+  provider: deepseek
+  default: deepseek-v4-pro
+  base_url: https://api.deepseek.com/v1
+
+database:
+  journal_mode: wal
+  synchronous: FULL
+
+runtime:
+  nofile_soft_limit: 4096
+
+terminal:
+  cwd: /data/pearl-agent/workspace
+
+security:
+  redact_secrets: true

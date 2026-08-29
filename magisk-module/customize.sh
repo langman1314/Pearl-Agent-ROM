@@ -1,6 +1,6 @@
 #!/system/bin/sh
-set -eu
-set -o pipefail
+# Magisk sources customize.sh into its installer process. Do not change global
+# errexit/nounset/pipefail state; every safety-critical command is guarded here.
 
 SKIPMOUNT=false
 PROPFILE=true
@@ -14,6 +14,8 @@ DATA_ROOT="$STATE_ROOT/data"
 ARCHIVE="$MODPATH/payload/rootfs.tar.zst"
 ZSTD="$MODPATH/payload/zstd"
 MANIFEST="$MODPATH/payload/manifest.sha256"
+UNPACKED_BYTES_FILE="$MODPATH/payload/rootfs.unpacked-bytes"
+HERMES_CONFIG_TEMPLATE="$MODPATH/payload/hermes-config.yaml"
 EXPECTED_HERMES_COMMIT=a2e19d484cb5591df8dafe667c93345b62d9bf06
 
 ui_print "- Pearl Nexus + Hermes chroot installer"
@@ -39,6 +41,8 @@ fi
 [ -f "$ZSTD" ] || abort "! Missing payload/zstd"
 chmod 0755 "$ZSTD"
 [ -x "$ZSTD" ] || abort "! payload/zstd is not executable"
+[ -f "$UNPACKED_BYTES_FILE" ] || abort "! Missing payload/rootfs.unpacked-bytes"
+[ -f "$HERMES_CONFIG_TEMPLATE" ] || abort "! Missing payload/hermes-config.yaml"
 [ -f "$MANIFEST" ] || abort "! Missing payload/manifest.sha256"
 
 ui_print "- Verifying payload SHA-256 manifest"
@@ -48,6 +52,24 @@ ui_print "- Verifying payload SHA-256 manifest"
 ) || abort "! Payload SHA-256 verification failed"
 
 "$ZSTD" -t "$ARCHIVE" >/dev/null 2>&1 || abort "! Rootfs zstd integrity test failed"
+
+unpacked_bytes="$(tr -d ' \r\n' < "$UNPACKED_BYTES_FILE")"
+case "$unpacked_bytes" in
+  ''|*[!0-9]*) abort "! Invalid rootfs uncompressed-size metadata" ;;
+esac
+[ "$unpacked_bytes" -ge 1048576 ] || abort "! Rootfs uncompressed size is implausibly small"
+mkdir -p "$STATE_ROOT"
+chmod 0700 "$STATE_ROOT"
+available_kb="$(df -Pk "$STATE_ROOT" | awk 'NR > 1 { value=$4 } END { print value }')"
+case "$available_kb" in
+  ''|*[!0-9]*) abort "! Could not determine free space under $STATE_ROOT" ;;
+esac
+unpacked_kb=$(((unpacked_bytes + 1023) / 1024))
+required_kb=$((unpacked_kb + unpacked_kb / 4 + 262144))
+[ "$available_kb" -ge "$required_kb" ] || {
+  abort "! Insufficient /data space: need ${required_kb} KiB free, have ${available_kb} KiB"
+}
+ui_print "- Free-space gate passed (${available_kb} KiB available)"
 
 # Module upgrades can run while the old chroot is live. Stop and detach every
 # bind mount before renaming the active rootfs; moving a mounted tree would
@@ -59,8 +81,10 @@ unmount_chroot
 
 mkdir -p "$STATE_ROOT" "$DATA_ROOT" "$STATE_ROOT/run"
 chmod 0700 "$STATE_ROOT" "$DATA_ROOT" "$STATE_ROOT/run"
+# A killed installer may leave an extraction tree. No live process can own it
+# after stop_bridge + unmount_chroot, so clean all stale stages before reuse.
+rm -rf "$STATE_ROOT"/rootfs.new.*
 stage="$STATE_ROOT/rootfs.new.$$"
-rm -rf "$stage"
 mkdir -p "$stage"
 
 ui_print "- Extracting verified Debian ARM64 rootfs"
@@ -91,10 +115,14 @@ if [ ! -f "$DATA_ROOT/config/hermes-bridge.json" ]; then
   cp "$stage/data/pearl-agent/config/hermes-bridge.json" "$DATA_ROOT/config/hermes-bridge.json"
   chmod 0600 "$DATA_ROOT/config/hermes-bridge.json"
 fi
+if [ ! -f "$DATA_ROOT/hermes-home/config.yaml" ]; then
+  cp "$HERMES_CONFIG_TEMPLATE" "$DATA_ROOT/hermes-home/config.yaml"
+fi
+chmod 0600 "$DATA_ROOT/hermes-home/config.yaml"
 if [ ! -f "$DATA_ROOT/hermes-home/.env" ]; then
   : > "$DATA_ROOT/hermes-home/.env"
-  chmod 0600 "$DATA_ROOT/hermes-home/.env"
 fi
+chmod 0600 "$DATA_ROOT/hermes-home/.env"
 if [ ! -f "$MCP_TOKEN_FILE" ]; then
   old_umask="$(umask)"
   umask 077

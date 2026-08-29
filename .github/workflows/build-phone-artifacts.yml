@@ -1,0 +1,146 @@
+name: Build Pearl phone artifacts
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pearl-phone-artifacts-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      HERMES_REPOSITORY: https://github.com/NousResearch/hermes-agent.git
+      HERMES_COMMIT: a2e19d484cb5591df8dafe667c93345b62d9bf06
+      ZSTD_REPOSITORY: https://github.com/facebook/zstd.git
+      ZSTD_COMMIT: f8745da6ff1ad1e7bab384bd1f9d742439278e99
+      SOURCE_DATE_EPOCH: "1748736000"
+
+    steps:
+      - name: Check out Pearl sources
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Install pinned-build host tools
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ca-certificates file gcc-aarch64-linux-gnu git make mmdebstrap \
+            qemu-user-static rsync unzip zip zstd
+          dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' \
+            ca-certificates file gcc-aarch64-linux-gnu git make mmdebstrap \
+            qemu-user-static rsync unzip zip zstd \
+            | sort > host-build-packages.tsv
+
+      - name: Fetch exact Hermes source
+        run: |
+          set -Eeuo pipefail
+          mkdir -p .tools/hermes-agent-upstream
+          git -C .tools/hermes-agent-upstream init
+          git -C .tools/hermes-agent-upstream remote add origin "$HERMES_REPOSITORY"
+          git -C .tools/hermes-agent-upstream fetch --depth 1 origin "$HERMES_COMMIT"
+          git -C .tools/hermes-agent-upstream checkout --detach FETCH_HEAD
+          test "$(git -C .tools/hermes-agent-upstream rev-parse HEAD)" = "$HERMES_COMMIT"
+          test -z "$(git -C .tools/hermes-agent-upstream status --porcelain --untracked-files=no)"
+
+      - name: Build deterministic Debian ARM64 Hermes rootfs
+        run: |
+          set -Eeuo pipefail
+          mkdir -p artifacts/rootfs artifacts/tooling artifacts/magisk
+          sudo --preserve-env=SOURCE_DATE_EPOCH \
+            scripts/build-hermes-rootfs.sh \
+            --hermes-source "$PWD/.tools/hermes-agent-upstream" \
+            --output-dir "$PWD/artifacts/rootfs"
+
+      - name: Build reproducible static ARM64 zstd twice
+        run: |
+          set -Eeuo pipefail
+          mkdir -p .tools/zstd-source
+          git -C .tools/zstd-source init
+          git -C .tools/zstd-source remote add origin "$ZSTD_REPOSITORY"
+          git -C .tools/zstd-source fetch --depth 1 origin "$ZSTD_COMMIT"
+          git -C .tools/zstd-source checkout --detach FETCH_HEAD
+          test "$(git -C .tools/zstd-source rev-parse HEAD)" = "$ZSTD_COMMIT"
+          test -z "$(git -C .tools/zstd-source status --porcelain --untracked-files=no)"
+
+          cp -a .tools/zstd-source .tools/zstd-build-a
+          cp -a .tools/zstd-source .tools/zstd-build-b
+          for tree in .tools/zstd-build-a .tools/zstd-build-b; do
+            make -C "$tree/programs" -j2 zstd-release \
+              CC=aarch64-linux-gnu-gcc \
+              AR=aarch64-linux-gnu-ar \
+              RANLIB=aarch64-linux-gnu-ranlib \
+              HAVE_ZLIB=0 HAVE_LZMA=0 HAVE_LZ4=0 \
+              CFLAGS='-O2 -fno-ident' \
+              LDFLAGS='-static -Wl,--build-id=none'
+          done
+
+          hash_a="$(sha256sum .tools/zstd-build-a/programs/zstd | awk '{print $1}')"
+          hash_b="$(sha256sum .tools/zstd-build-b/programs/zstd | awk '{print $1}')"
+          test "$hash_a" = "$hash_b"
+          file .tools/zstd-build-a/programs/zstd \
+            | grep -Eqi 'ELF 64-bit LSB.*(ARM aarch64|ARM64).*(statically linked|static-pie linked)'
+          if aarch64-linux-gnu-readelf -l .tools/zstd-build-a/programs/zstd | grep -q INTERP; then
+            echo 'Static zstd unexpectedly has a program interpreter' >&2
+            exit 1
+          fi
+
+          install -Dm755 .tools/zstd-build-a/programs/zstd \
+            artifacts/tooling/zstd-arm64-static
+          printf '%s  %s\n' "$hash_a" zstd-arm64-static \
+            > artifacts/tooling/zstd-arm64-static.sha256
+
+      - name: Assemble and validate Magisk module
+        run: |
+          set -Eeuo pipefail
+          rootfs="$(find artifacts/rootfs -maxdepth 1 -type f -name '*.tar.zst' -print -quit)"
+          test -n "$rootfs"
+          zstd_hash="$(awk 'NR == 1 { print $1 }' artifacts/tooling/zstd-arm64-static.sha256)"
+          scripts/build-magisk-module.sh \
+            --rootfs "$rootfs" \
+            --zstd artifacts/tooling/zstd-arm64-static \
+            --zstd-sha256 "$zstd_hash" \
+            --output-dir artifacts/magisk
+
+      - name: Record artifact provenance and hashes
+        run: |
+          set -Eeuo pipefail
+          {
+            echo "repository=$GITHUB_REPOSITORY"
+            echo "repository_commit=$GITHUB_SHA"
+            echo "workflow_run_id=$GITHUB_RUN_ID"
+            echo "hermes_repository=$HERMES_REPOSITORY"
+            echo "hermes_commit=$HERMES_COMMIT"
+            echo "zstd_repository=$ZSTD_REPOSITORY"
+            echo "zstd_commit=$ZSTD_COMMIT"
+            echo "source_date_epoch=$SOURCE_DATE_EPOCH"
+            aarch64-linux-gnu-gcc --version | head -n 1 | sed 's/^/cross_compiler=/'
+            qemu-aarch64-static --version | head -n 1 | sed 's/^/qemu=/'
+          } > artifacts/build-provenance.txt
+          cp host-build-packages.tsv artifacts/host-build-packages.tsv
+          find artifacts -type f ! -name 'all-artifacts.sha256' -print0 \
+            | sort -z \
+            | xargs -0 sha256sum > artifacts/all-artifacts.sha256
+          cat artifacts/all-artifacts.sha256
+
+      - name: Upload verified phone artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pearl-phone-artifacts-${{ github.run_id }}
+          path: |
+            artifacts/rootfs/*
+            artifacts/tooling/*
+            artifacts/magisk/*
+            artifacts/build-provenance.txt
+            artifacts/host-build-packages.tsv
+            artifacts/all-artifacts.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

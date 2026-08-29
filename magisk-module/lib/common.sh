@@ -17,8 +17,22 @@ mkdir_safe() {
   chmod "${2:-0700}" "$1"
 }
 
+rotate_log_file() {
+  log_file="$1"
+  max_bytes="${2:-10485760}"
+  [ -f "$log_file" ] || return 0
+  bytes="$(wc -c < "$log_file" | tr -d ' ')"
+  case "$bytes" in ''|*[!0-9]*) return 0 ;; esac
+  [ "$bytes" -lt "$max_bytes" ] && return 0
+  rm -f "$log_file.3"
+  [ -f "$log_file.2" ] && mv "$log_file.2" "$log_file.3"
+  [ -f "$log_file.1" ] && mv "$log_file.1" "$log_file.2"
+  mv "$log_file" "$log_file.1"
+}
+
 pearl_log() {
   mkdir_safe "$LOG_DIR" 0700
+  rotate_log_file "$SUPERVISOR_LOG" 10485760
   printf '%s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*" >> "$SUPERVISOR_LOG"
 }
 

@@ -12,6 +12,18 @@ wait_for_boot() {
   [ "$(getprop sys.boot_completed)" = "1" ]
 }
 
+sleep_while_enabled() {
+  remaining="$1"
+  while [ "$remaining" -gt 0 ]; do
+    [ -f "$DISABLED_FILE" ] && return 1
+    step=5
+    [ "$remaining" -lt "$step" ] && step="$remaining"
+    sleep "$step"
+    remaining=$((remaining - step))
+  done
+  [ ! -f "$DISABLED_FILE" ]
+}
+
 claim_supervisor() {
   if [ -f "$SUPERVISOR_PID_FILE" ]; then
     read -r old_pid old_start < "$SUPERVISOR_PID_FILE" || true
@@ -36,21 +48,10 @@ release_supervisor() {
   fi
 }
 
-rotate_log() {
-  log_file="$1"
-  [ -f "$log_file" ] || return 0
-  bytes="$(wc -c < "$log_file" | tr -d ' ')"
-  [ "$bytes" -lt 10485760 ] && return 0
-  rm -f "$log_file.3"
-  [ -f "$log_file.2" ] && mv "$log_file.2" "$log_file.3"
-  [ -f "$log_file.1" ] && mv "$log_file.1" "$log_file.2"
-  mv "$log_file" "$log_file.1"
-}
-
 start_once() {
   mount_chroot || return 1
   rm -f "$PID_FILE"
-  rotate_log "$LOG_DIR/hermes-bridge.log"
+  rotate_log_file "$LOG_DIR/hermes-bridge.log" 10485760
   pearl_log "Starting authenticated Hermes bridge in Debian chroot"
   setsid chroot "$ROOTFS" /usr/bin/env -i \
     HOME=/data/pearl-agent/hermes-home/home \
@@ -118,8 +119,8 @@ while [ ! -f "$DISABLED_FILE" ]; do
   else
     crash_count=$((crash_count + 1))
     if [ "$crash_count" -ge 3 ]; then
-      pearl_log "Crash-loop fuse open after $crash_count short runs; sleeping 1800s"
-      sleep 1800
+      pearl_log "Crash-loop fuse open after $crash_count short runs; sleeping up to 1800s"
+      sleep_while_enabled 1800 || break
       crash_count=0
       backoff=2
       continue
@@ -127,7 +128,7 @@ while [ ! -f "$DISABLED_FILE" ]; do
   fi
 
   pearl_log "Restarting Hermes bridge after ${backoff}s"
-  sleep "$backoff"
+  sleep_while_enabled "$backoff" || break
   case "$backoff" in
     2) backoff=5 ;;
     5) backoff=15 ;;

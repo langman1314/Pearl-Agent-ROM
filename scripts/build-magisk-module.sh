@@ -36,7 +36,7 @@ while (($#)); do
   esac
 done
 
-for command_name in file rsync sha256sum unzip zip; do
+for command_name in file rsync sha256sum tar unzip wc zip zstd; do
   command -v "$command_name" >/dev/null 2>&1 || {
     echo "Missing required command: $command_name" >&2
     exit 1
@@ -52,6 +52,8 @@ ROOTFS="$(realpath "$ROOTFS")"
 ZSTD_BINARY="$(realpath "$ZSTD_BINARY")"
 mkdir -p "$OUTPUT_DIR"
 OUTPUT_DIR="$(realpath "$OUTPUT_DIR")"
+work_dir="$(mktemp -d -t pearl-magisk.XXXXXXXX)"
+trap 'rm -rf "$work_dir"' EXIT
 
 expected_rootfs_hash="$(awk 'NR==1 {print tolower($1)}' "$ROOTFS.sha256")"
 actual_rootfs_hash="$(sha256sum "$ROOTFS" | awk '{print $1}')"
@@ -59,6 +61,18 @@ actual_rootfs_hash="$(sha256sum "$ROOTFS" | awk '{print $1}')"
   echo "Rootfs SHA-256 mismatch" >&2
   exit 1
 }
+zstd -t "$ROOTFS" >/dev/null
+rootfs_unpacked_bytes="$(zstd -dc "$ROOTFS" | wc -c | tr -d ' ')"
+[[ "$rootfs_unpacked_bytes" =~ ^[1-9][0-9]*$ ]] || {
+  echo "Could not determine rootfs uncompressed size" >&2
+  exit 1
+}
+rootfs_entries="$work_dir/rootfs.entries"
+zstd -dc "$ROOTFS" | tar -tf - > "$rootfs_entries"
+if grep -Eqi '(^|/)(boot|init_boot|vendor_boot|vbmeta(_system|_vendor)?|super|preloader|efuse)(_[ab])?\.(img|bin)$' "$rootfs_entries"; then
+  echo "Unsafe partition payload detected inside rootfs archive" >&2
+  exit 1
+fi
 actual_zstd_hash="$(sha256sum "$ZSTD_BINARY" | awk '{print $1}')"
 [[ "$actual_zstd_hash" == "${ZSTD_SHA256,,}" ]] || {
   echo "zstd SHA-256 mismatch: got $actual_zstd_hash" >&2
@@ -78,16 +92,19 @@ version="$(awk -F= '$1=="version" {print $2}' "$TEMPLATE/module.prop")"
 version_code="$(awk -F= '$1=="versionCode" {print $2}' "$TEMPLATE/module.prop")"
 [[ -n "$version" && -n "$version_code" ]] || { echo "Invalid module.prop" >&2; exit 1; }
 
-work_dir="$(mktemp -d -t pearl-magisk.XXXXXXXX)"
-trap 'rm -rf "$work_dir"' EXIT
 stage="$work_dir/module"
 rsync -a --exclude='payload/rootfs.tar.zst' --exclude='payload/zstd' \
   --exclude='payload/manifest.sha256' "$TEMPLATE/" "$stage/"
 install -Dm644 "$ROOTFS" "$stage/payload/rootfs.tar.zst"
 install -Dm755 "$ZSTD_BINARY" "$stage/payload/zstd"
-printf '%s  %s\n%s  %s\n' \
+printf '%s\n' "$rootfs_unpacked_bytes" > "$stage/payload/rootfs.unpacked-bytes"
+rootfs_size_hash="$(sha256sum "$stage/payload/rootfs.unpacked-bytes" | awk '{print $1}')"
+hermes_config_hash="$(sha256sum "$stage/payload/hermes-config.yaml" | awk '{print $1}')"
+printf '%s  %s\n%s  %s\n%s  %s\n%s  %s\n' \
   "$actual_rootfs_hash" rootfs.tar.zst \
   "$actual_zstd_hash" zstd \
+  "$rootfs_size_hash" rootfs.unpacked-bytes \
+  "$hermes_config_hash" hermes-config.yaml \
   > "$stage/payload/manifest.sha256"
 
 chmod 0755 "$stage/customize.sh" "$stage/post-fs-data.sh" "$stage/service.sh" \
@@ -104,7 +121,8 @@ sha256sum "$artifact" > "$artifact.sha256"
 
 unzip -t "$artifact" >/dev/null
 for required in module.prop customize.sh post-fs-data.sh service.sh action.sh uninstall.sh \
-  lib/common.sh payload/rootfs.tar.zst payload/zstd payload/manifest.sha256; do
+  lib/common.sh payload/hermes-config.yaml payload/rootfs.tar.zst \
+  payload/rootfs.unpacked-bytes payload/zstd payload/manifest.sha256; do
   unzip -Z1 "$artifact" | grep -Fx "$required" >/dev/null || {
     echo "Built module is missing $required" >&2
     exit 1

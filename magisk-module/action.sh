@@ -7,8 +7,9 @@ action="${1:-toggle}"
 case "$action" in
   enable)
     rm -f "$DISABLED_FILE"
-    mount_chroot
-    pearl_log "Runtime enabled; reboot or run service.sh to start"
+    # A Magisk app action may run in an app-private mount namespace. Do not
+    # create chroot mounts here and pretend they are visible to init services.
+    pearl_log "Runtime enabled; reboot required to mount and start in init namespace"
     ;;
   disable)
     touch "$DISABLED_FILE"
@@ -27,7 +28,7 @@ case "$action" in
     failed="$STATE_ROOT/rootfs.failed.$(date +%s)"
     [ -d "$ROOTFS" ] && mv "$ROOTFS" "$failed"
     mv "$PREVIOUS_ROOTFS" "$ROOTFS"
-    pearl_log "Previous rootfs restored; failed rootfs retained at $failed"
+    pearl_log "Previous rootfs restored; failed rootfs retained at $failed; runtime remains disabled until explicit enable and reboot"
     ;;
   toggle)
     if [ -f "$DISABLED_FILE" ]; then
