@@ -13,7 +13,7 @@ internal fun createSymbolicLinkOrSkip(link: Path, target: Path) {
     } catch (error: SecurityException) {
         assumeNoException(error)
     } catch (error: FileSystemException) {
-        if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
+        if (System.getProperty("os.name").orEmpty().startsWith("Windows", ignoreCase = true)) {
             assumeNoException(error)
         } else {
             throw error

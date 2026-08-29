@@ -41,5 +41,3 @@ fi
 powershell.exe -NoProfile -ExecutionPolicy Bypass \
   -File "$(cygpath -w "$ROOT/scripts/build-nexus.ps1")"
 
-echo '[bootstrap] Build completed.'
-find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print
