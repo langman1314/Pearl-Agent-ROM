@@ -56,7 +56,10 @@ class Entrance : IXposed() {
             val isNoSupportedVersion =
                 isFallbackVersion || (
                         webSettingsResult is WebSettingsResult.RequestFailed &&
-                                webSettingsResult.reason == WebSettingsFailureReason.ServerError
+                                webSettingsResult.reason in setOf(
+                                    WebSettingsFailureReason.ServerError,
+                                    WebSettingsFailureReason.UnsupportedVersion,
+                                )
                         )
 
             when {
