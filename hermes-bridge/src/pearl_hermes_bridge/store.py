@@ -55,17 +55,35 @@ class TaskStore:
         self._conn.commit()
 
     def recover_interrupted(self) -> list[str]:
+        """Recover queued work without replaying an ambiguous in-flight turn.
+
+        Hermes persists the user turn and may execute side-effecting tools before
+        this process records completion. Replaying a task that was ``running``
+        at crash time can therefore duplicate terminal, file, or network effects.
+        Such tasks fail closed and must be explicitly submitted again. Work that
+        never started remains queued and is safe to resume.
+        """
         with self._lock:
             now = time.time()
             self._conn.execute(
                 """UPDATE tasks
-                   SET status='queued', error='Bridge restarted; task re-queued',
-                       cancel_requested=0, updated_at=?
+                   SET status='cancelled', error='Cancelled before bridge restart',
+                       updated_at=?
+                   WHERE cancel_requested=1 AND status IN ('queued', 'running')""",
+                (now,),
+            )
+            self._conn.execute(
+                """UPDATE tasks
+                   SET status='failed',
+                       error='Bridge restarted during execution; completion is ambiguous and was not replayed',
+                       updated_at=?
                    WHERE status='running'""",
                 (now,),
             )
             rows = self._conn.execute(
-                "SELECT id FROM tasks WHERE status='queued' ORDER BY created_at"
+                """SELECT id FROM tasks
+                   WHERE status='queued' AND cancel_requested=0
+                   ORDER BY created_at"""
             ).fetchall()
             self._conn.commit()
             return [str(row["id"]) for row in rows]
@@ -111,8 +129,20 @@ class TaskStore:
             self._conn.commit()
             return cursor.rowcount == 1
 
-    def finish(self, task_id: str, result: str) -> None:
-        self._transition(task_id, "completed", result=result, error=None)
+    def complete_or_cancel(self, task_id: str, result: str) -> TaskRecord:
+        """Atomically commit completion unless cancellation already won."""
+        with self._lock:
+            self._conn.execute(
+                """UPDATE tasks
+                   SET status=CASE WHEN cancel_requested=1 THEN 'cancelled' ELSE 'completed' END,
+                       result=CASE WHEN cancel_requested=1 THEN NULL ELSE ? END,
+                       error=CASE WHEN cancel_requested=1 THEN 'Cancelled' ELSE NULL END,
+                       updated_at=?
+                   WHERE id=? AND status='running'""",
+                (result, time.time(), task_id),
+            )
+            self._conn.commit()
+        return self.get(task_id)
 
     def fail(self, task_id: str, error: str) -> None:
         self._transition(task_id, "failed", result=None, error=error)

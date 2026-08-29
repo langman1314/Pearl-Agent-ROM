@@ -9,7 +9,7 @@
 - `DEEPSEEK_API_KEY` 写入 `$HERMES_HOME/.env`，不得进入 ROM/Git；
 - SQLite 使用 WAL + FULL synchronous；
 - 单 worker 执行长任务，避免手机内存/温度失控；
-- bridge 重启时，处于 running 的任务自动重新排队；
+- bridge 重启时，仅恢复未开始的 queued 任务；已运行任务因副作用完成状态不明而 fail closed，不自动重放；
 - 每个 Nexus session 映射到独立、规范化 Hermes session。
 
 ## MCP 工具

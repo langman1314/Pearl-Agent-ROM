@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
 from pearl_hermes_bridge.config import BridgeConfig
-from pearl_hermes_bridge.runtime import normalize_session_id, render_task_prompt
+from pearl_hermes_bridge.runtime import TaskWorker, normalize_session_id, render_task_prompt
 from pearl_hermes_bridge.store import TaskStore
 
 
@@ -40,17 +42,21 @@ class RuntimeBoundaryTest(unittest.TestCase):
 
 
 class TaskStoreTest(unittest.TestCase):
-    def test_lifecycle_and_restart_recovery(self):
+    def test_restart_recovers_only_never_started_work(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = TaskStore(Path(tmp, "bridge.db"))
-            first = store.create("session", "goal", "context")
-            self.assertEqual("queued", first.status)
-            self.assertTrue(store.mark_running(first.id))
-            self.assertEqual([first.id], store.recover_interrupted())
-            self.assertEqual("queued", store.get(first.id).status)
-            self.assertTrue(store.mark_running(first.id))
-            store.finish(first.id, "done")
-            self.assertEqual("done", store.get(first.id).result)
+            queued = store.create("session", "queued", "")
+            ambiguous = store.create("session", "running", "")
+            cancelled = store.create("session", "cancelled-running", "")
+            self.assertTrue(store.mark_running(ambiguous.id))
+            self.assertTrue(store.mark_running(cancelled.id))
+            store.cancel(cancelled.id)
+
+            self.assertEqual([queued.id], store.recover_interrupted())
+            self.assertEqual("queued", store.get(queued.id).status)
+            self.assertEqual("failed", store.get(ambiguous.id).status)
+            self.assertIn("ambiguous", store.get(ambiguous.id).error or "")
+            self.assertEqual("cancelled", store.get(cancelled.id).status)
             store.close()
 
     def test_queued_cancel_is_terminal(self):
@@ -59,6 +65,58 @@ class TaskStoreTest(unittest.TestCase):
             record = store.create("session", "goal", "")
             self.assertEqual("cancelled", store.cancel(record.id).status)
             self.assertFalse(store.mark_running(record.id))
+            store.close()
+
+    def test_completion_atomically_respects_cancel(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = TaskStore(Path(tmp, "bridge.db"))
+            record = store.create("session", "goal", "")
+            self.assertTrue(store.mark_running(record.id))
+            store.cancel(record.id)
+            final = store.complete_or_cancel(record.id, "must be discarded")
+            self.assertEqual("cancelled", final.status)
+            self.assertIsNone(final.result)
+            store.close()
+
+
+class BlockingRuntime:
+    def __init__(self):
+        self.started = threading.Event()
+        self.interrupted = threading.Event()
+
+    def run(self, session_id, goal, context, should_cancel=None):
+        self.started.set()
+        while not self.interrupted.wait(0.01):
+            if should_cancel is not None and should_cancel():
+                raise RuntimeError("cancel observed before interrupt")
+        raise RuntimeError("Hermes interrupted")
+
+    def interrupt(self, session_id):
+        self.interrupted.set()
+
+
+class TaskWorkerTest(unittest.TestCase):
+    def test_running_cancel_ends_cancelled_even_when_agent_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = TaskStore(Path(tmp, "bridge.db"))
+            runtime = BlockingRuntime()
+            config = BridgeConfig(
+                workdir=tmp,
+                state_db=str(Path(tmp, "bridge.db")),
+            ).validated()
+            worker = TaskWorker(config, store, runtime)
+            worker.start()
+            record = worker.submit("phone", "long goal")
+            self.assertTrue(runtime.started.wait(2), "worker did not start")
+
+            worker.cancel(record.id)
+            deadline = time.monotonic() + 2
+            while store.get(record.id).status not in {"cancelled", "failed"}:
+                self.assertLess(time.monotonic(), deadline, "cancel did not settle")
+                time.sleep(0.01)
+
+            self.assertEqual("cancelled", store.get(record.id).status)
+            self.assertTrue(worker.stop())
             store.close()
 
 

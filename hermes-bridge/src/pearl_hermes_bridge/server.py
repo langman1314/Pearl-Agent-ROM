@@ -76,9 +76,19 @@ def create_server(config: BridgeConfig) -> tuple[MCPServer, TaskStore, TaskWorke
         resolved = normalize_session_id(config.session_prefix, session_id)
         return runtime.run(resolved, goal, context)
 
+    closed = False
+
     def shutdown() -> None:
-        worker.stop()
-        store.close()
+        nonlocal closed
+        if closed:
+            return
+        # Never close the shared SQLite connection under a still-running
+        # worker. If a Hermes tool ignores interruption, the OS will reclaim
+        # the connection when the process exits and restart recovery will mark
+        # that in-flight task ambiguous rather than replaying it.
+        if worker.stop():
+            store.close()
+            closed = True
 
     atexit.register(shutdown)
     return server, store, worker

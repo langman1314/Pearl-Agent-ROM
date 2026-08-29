@@ -7,12 +7,16 @@ import re
 import threading
 import traceback
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .config import BridgeConfig
 from .store import TaskRecord, TaskStore
 
 _SESSION_SAFE = re.compile(r"[^A-Za-z0-9._:-]+")
+
+
+class TaskCancelled(RuntimeError):
+    """Raised when durable cancellation wins before Hermes starts the turn."""
 
 
 def normalize_session_id(prefix: str, value: str) -> str:
@@ -70,11 +74,22 @@ class HermesRuntime:
             self._locks[session_id] = threading.RLock()
             return agent
 
-    def run(self, session_id: str, goal: str, context: str = "") -> str:
+    def run(
+        self,
+        session_id: str,
+        goal: str,
+        context: str = "",
+        should_cancel: Callable[[], bool] | None = None,
+    ) -> str:
         agent = self._agent_for(session_id)
         lock = self._locks[session_id]
         with lock:
+            # A cancel can arrive after the worker publishes its active session
+            # but before this lock is acquired. Clear stale interrupts first,
+            # then re-check durable state so that cancellation cannot be erased.
             agent.clear_interrupt()
+            if should_cancel is not None and should_cancel():
+                raise TaskCancelled("Cancelled before Hermes turn started")
             response = agent.chat(render_task_prompt(goal, context))
             text = str(response or "").strip()
             if len(text) > self.config.max_result_chars:
@@ -99,6 +114,7 @@ class TaskWorker:
         self._queue: queue.Queue[str | None] = queue.Queue()
         self._stop = threading.Event()
         self._active: dict[str, str] = {}
+        self._active_lock = threading.RLock()
         self._thread = threading.Thread(target=self._loop, name="pearl-hermes-worker", daemon=True)
 
     def start(self) -> None:
@@ -122,7 +138,8 @@ class TaskWorker:
 
     def cancel(self, task_id: str) -> TaskRecord:
         record = self.store.cancel(task_id)
-        session_id = self._active.get(task_id)
+        with self._active_lock:
+            session_id = self._active.get(task_id)
         if session_id:
             self.runtime.interrupt(session_id)
         return self.store.get(task_id)
@@ -131,32 +148,47 @@ class TaskWorker:
         while not self._stop.is_set():
             task_id = self._queue.get()
             if task_id is None:
+                self._queue.task_done()
                 return
             try:
                 if not self.store.mark_running(task_id):
                     continue
                 record = self.store.get(task_id)
-                self._active[task_id] = record.session_id
-                result = self.runtime.run(record.session_id, record.goal, record.context)
-                if self.store.is_cancel_requested(task_id):
-                    self.store.mark_cancelled(task_id)
-                else:
-                    self.store.finish(task_id, result)
+                with self._active_lock:
+                    self._active[task_id] = record.session_id
+                result = self.runtime.run(
+                    record.session_id,
+                    record.goal,
+                    record.context,
+                    should_cancel=lambda: self.store.is_cancel_requested(task_id),
+                )
+                self.store.complete_or_cancel(task_id, result)
             except Exception as error:
                 try:
-                    self.store.fail(task_id, "".join(traceback.format_exception_only(type(error), error)).strip())
+                    if self.store.is_cancel_requested(task_id):
+                        self.store.mark_cancelled(task_id)
+                    else:
+                        message = "".join(
+                            traceback.format_exception_only(type(error), error)
+                        ).strip()
+                        self.store.fail(task_id, message)
                 except Exception:
                     pass
             finally:
-                self._active.pop(task_id, None)
+                with self._active_lock:
+                    self._active.pop(task_id, None)
                 self._queue.task_done()
 
-    def stop(self) -> None:
+    def stop(self, timeout: float = 30.0) -> bool:
+        """Request shutdown and report whether the worker exited cleanly."""
         self._stop.set()
-        for task_id, session_id in list(self._active.items()):
+        with self._active_lock:
+            active = list(self._active.values())
+        for session_id in active:
             self.runtime.interrupt(session_id)
         self._queue.put(None)
-        self._thread.join(timeout=10)
+        self._thread.join(timeout=timeout)
+        return not self._thread.is_alive()
 
 
 def task_json(record: TaskRecord, include_result: bool = True) -> str:
