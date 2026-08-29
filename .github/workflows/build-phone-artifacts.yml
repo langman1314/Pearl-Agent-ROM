@@ -55,7 +55,7 @@ jobs:
           set -Eeuo pipefail
           mkdir -p artifacts/rootfs artifacts/tooling artifacts/magisk
           sudo --preserve-env=SOURCE_DATE_EPOCH \
-            scripts/build-hermes-rootfs.sh \
+            bash scripts/build-hermes-rootfs.sh \
             --hermes-source "$PWD/.tools/hermes-agent-upstream" \
             --output-dir "$PWD/artifacts/rootfs"
 
