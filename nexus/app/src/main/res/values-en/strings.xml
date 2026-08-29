@@ -1,0 +1,340 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App / Module -->
+    <string name="app_name">Nexus</string>
+    <string name="xposed_desc">Empower your voice assistant with your own models\n\nCurrently supported:\n\n- ColorOS Breeno\n- HyperOS XiaoAi</string>
+
+    <!-- Onboarding -->
+    <string name="ui_onboard_startup_demo_button">Get Started</string>
+    <string name="ui_onboard_web_beta_title">Support Is Still in Beta</string>
+    <string name="ui_onboard_web_beta_body">Support for this assistant is still being validated, so some scenarios may be unstable. You can continue setup and return to Settings later to adjust things or send feedback if anything goes wrong.</string>
+    <string name="ui_onboard_web_fetch_failed_title">Unable to Load Configuration</string>
+    <string name="ui_onboard_web_fetch_failed_body">Could not connect to the configuration service. Retry or go straight to setup.</string>
+    <string name="ui_onboard_web_unsupported_title">Host Version Not Supported</string>
+    <string name="ui_onboard_web_unsupported_body">A dedicated configuration is not available for this host version yet. The latest available configuration has been applied. Please send feedback if you run into issues.</string>
+    <string name="ui_onboard_web_network_error_title">Network Request Failed</string>
+    <string name="ui_onboard_web_network_error_body">There is a network problem. Check your connection and try again, or go straight to setup.</string>
+    <string name="ui_onboard_web_confirm">OK</string>
+    <string name="ui_onboard_web_cancel">Cancel</string>
+    <string name="ui_onboard_web_enter_directly">Go to Setup</string>
+    <string name="ui_onboard_web_retry">Retry</string>
+    <string name="ui_onboard_provider_pick_title">Choose a Provider</string>
+    <string name="ui_onboard_provider_pick_description">Start here to connect your model.\nSelect a provider to continue.</string>
+    <string name="ui_onboard_configure_title">Configure Model Access</string>
+    <string name="ui_onboard_configure_description">Enter your model settings to get started.</string>
+    <string name="ui_onboard_configure_next">Next</string>
+    <string name="ui_onboard_configure_endpoint_override_title">Custom Endpoint</string>
+    <string name="ui_onboard_configure_endpoint_override_description_off">Using default endpoint</string>
+    <string name="ui_onboard_configure_endpoint_override_description_on">Using custom endpoint</string>
+    <string name="ui_onboard_configure_endpoint_label">Endpoint URL</string>
+    <string name="ui_onboard_configure_endpoint_placeholder">Enter your endpoint URL</string>
+    <string name="ui_onboard_configure_model_label">Model ID</string>
+    <string name="ui_onboard_configure_model_placeholder">Enter your model ID</string>
+    <string name="ui_onboard_configure_model_example">Example: %1$s</string>
+    <string name="ui_onboard_configure_api_key_label">API Key</string>
+    <string name="ui_onboard_configure_api_key_placeholder">Enter your API Key</string>
+    <string name="ui_onboard_configure_api_key_show">Show API Key</string>
+    <string name="ui_onboard_configure_api_key_hide">Hide API Key</string>
+    <string name="ui_onboard_configure_error_load_failed">Failed to load configuration: %1$s</string>
+    <string name="ui_onboard_configure_error_save_failed">Failed to save configuration: %1$s</string>
+    <string name="ui_onboard_done_headline">All set.</string>
+    <string name="ui_onboard_done_description">Setup is complete. You can start using Nexus now or fine-tune it later in Settings.</string>
+    <string name="ui_onboard_done_enter_home">Open Nexus</string>
+
+    <!-- Home -->
+    <string name="ui_home_title">Nexus</string>
+    <string name="ui_home_menu_new_conversation">New conversation</string>
+    <string name="ui_home_input_placeholder">Type a message...</string>
+    <string name="ui_tool_status_running">Running</string>
+    <string name="ui_tool_status_success">Success</string>
+    <string name="ui_tool_status_failed">Failed</string>
+    <plurals name="ui_home_used_tools">
+        <item quantity="one">Used %1$d Tool</item>
+        <item quantity="other">Used %1$d Tools</item>
+    </plurals>
+    <string name="ui_home_send_content_description">Send message</string>
+    <string name="ui_home_stop_content_description">Stop generating</string>
+    <string name="ui_home_action_copy_content_description">Copy</string>
+    <string name="ui_home_action_regenerate_content_description">Regenerate</string>
+    <string name="ui_home_action_fork_content_description">Fork conversation</string>
+    <string name="ui_toast_copied">Copied</string>
+    <string name="ui_home_error_generic_title">Cannot continue right now</string>
+    <string name="ui_home_error_retry_body">Please try again later.</string>
+    <string name="ui_home_error_config_required_title">Configuration is incomplete</string>
+    <string name="ui_home_error_config_required_body">Please fill in the model endpoint and model name first.</string>
+    <string name="ui_home_history_content_description">Conversation history</string>
+    <string name="ui_conversation_history_back_content_description">Back</string>
+    <string name="ui_conversation_history_loading">Loading conversation history...</string>
+    <string name="ui_conversation_history_empty_title">No conversation history yet</string>
+    <string name="ui_conversation_history_empty_body">Send a message and conversations will appear here.</string>
+    <string name="ui_conversation_history_error_title">Unable to load conversation history</string>
+    <string name="ui_conversation_history_untitled">Untitled conversation</string>
+    <string name="ui_conversation_history_delete_dialog_title">Delete conversation</string>
+    <string name="ui_conversation_history_delete_dialog_text">Delete this conversation? This cannot be undone.\n\n%1$s</string>
+    <string name="ui_conversation_history_delete_dialog_confirm">Delete</string>
+    <string name="ui_conversation_history_delete_dialog_cancel">Cancel</string>
+    <string name="ui_conversation_history_delete_error">Failed to delete conversation: %1$s</string>
+    <string name="ui_root_back_to_home_hint">Press back again to go to the Home screen</string>
+
+    <!-- Settings Shell -->
+    <string name="ui_settings_title">Settings</string>
+    <string name="ui_settings_menu_entry">Settings</string>
+
+    <!-- Settings Home Sections -->
+    <string name="ui_settings_section_model">Model</string>
+    <string name="ui_settings_section_tools">Tools</string>
+    <string name="ui_settings_section_rules">Rules</string>
+    <string name="ui_settings_section_app">App</string>
+
+    <!-- Settings Home Items -->
+    <string name="ui_settings_model_config">Model Configuration</string>
+    <string name="ui_settings_model_config_summary">Adjust how Nexus connects to your model</string>
+    <string name="ui_settings_memory">Memory</string>
+    <string name="ui_settings_memory_summary">Manage saved memories and preferences</string>
+    <string name="ui_settings_builtin_tools">Built-in Tools</string>
+    <string name="ui_settings_builtin_tools_summary">Manage tools provided by Nexus</string>
+    <string name="ui_settings_skills">Skills</string>
+    <string name="ui_settings_skills_summary">Manage local Skills</string>
+    <string name="skill_page_description">Turn local Skills on or off. Enabled Skills can be used by the Agent when needed.</string>
+    <string name="skill_loading">Loading Skills...</string>
+    <string name="skill_empty">No Skills are available right now.</string>
+    <string name="skill_editor_description">Edit the full SKILL.md. Saved changes apply in the next conversation.</string>
+    <string name="skill_save_action">Save</string>
+    <string name="skill_error_load_failed">Failed to load Skills: %1$s</string>
+    <string name="skill_error_save_failed">Failed to save Skill: %1$s</string>
+    <string name="skill_delete_dialog_title">Delete Skill</string>
+    <string name="skill_delete_dialog_text">Are you sure you want to delete the Skill \"%1$s\"? This action cannot be undone.</string>
+    <string name="skill_error_delete_failed">Failed to delete Skill: %1$s</string>
+    <string name="skill_import_button">Import Skill</string>
+    <string name="skill_import_no_skill_file">SKILL.md not found in the selected folder, cannot import</string>
+    <string name="skill_import_conflict_title">Duplicate Skill</string>
+    <string name="skill_import_conflict_text">The Skill "%1$s" already exists. Overwrite it?</string>
+    <string name="skill_import_overwrite">Overwrite</string>
+    <string name="skill_import_cancel">Cancel</string>
+    <string name="skill_import_resolve_failed">Unable to access the selected folder</string>
+    <string name="skill_import_error">Import failed</string>
+    <string name="ui_settings_custom_shell_tools">Custom Shell Tools</string>
+    <string name="ui_settings_custom_shell_tools_summary">Wrap common commands as tools your Agent can use</string>
+    <string name="ui_settings_mcp">MCP</string>
+    <string name="ui_settings_mcp_summary">Connect external MCP services and tools</string>
+    <string name="ui_settings_takeover">Takeover Rules</string>
+    <string name="ui_settings_takeover_summary">Route matched requests to the native assistant or Nexus</string>
+    <string name="ui_settings_execution_rules">Execution Rules</string>
+    <string name="ui_settings_execution_rules_summary">Set safety rules for Shell execution</string>
+    <string name="ui_settings_about">About</string>
+    <string name="ui_settings_about_summary"></string>
+    <string name="ui_settings_about_description">Bring your own model to your voice assistant</string>
+    <string name="ui_settings_about_author_homepage">Author Website</string>
+    <string name="ui_settings_about_github">GitHub</string>
+    <string name="ui_settings_about_afdian">Afdian</string>
+    <string name="ui_settings_about_telegram">Telegram Group</string>
+    <string name="ui_settings_about_feedback_feature">Feature Requests</string>
+    <string name="ui_settings_about_feedback_bug">Bug Reports</string>
+    <string name="ui_settings_about_version">Version</string>
+
+    <!-- Settings Detail Shared -->
+    <string name="ui_todo_page_title">Coming Soon</string>
+    <string name="ui_todo_page_description">This will be available in a future release. Stay tuned.</string>
+    <string name="unsaved_changes_dialog_title">Unsaved Changes</string>
+    <string name="unsaved_changes_dialog_text">Exit without saving?</string>
+    <string name="unsaved_changes_dialog_confirm_exit">Exit</string>
+    <string name="unsaved_changes_dialog_cancel">Cancel</string>
+
+    <!-- Settings Configure Page -->
+    <string name="ui_settings_configure_description">Configure model access, prompts, and proxy settings.</string>
+    <string name="ui_settings_configure_save">Save Configuration</string>
+    <string name="ui_settings_configure_switch_provider">Choose Provider Again</string>
+    <string name="save_before_provider_pick_dialog_title">Save current changes?</string>
+    <string name="save_before_provider_pick_dialog_text">Save the current model configuration before choosing another provider.</string>
+    <string name="save_before_provider_pick_dialog_save">Save</string>
+    <string name="save_before_provider_pick_dialog_cancel">Cancel</string>
+    <string name="ui_settings_configure_prompt_label">Prompt</string>
+    <string name="ui_settings_configure_prompt_placeholder">What should your assistant do?</string>
+    <string name="ui_settings_configure_proxy_label">Proxy</string>
+    <string name="ui_settings_configure_proxy_placeholder">For example: http://127.0.0.1:7890</string>
+    <string name="ui_settings_configure_error_required">This field cannot be empty</string>
+    <string name="ui_settings_configure_error_proxy_invalid">Proxy address is not a valid URI</string>
+    <string name="ui_settings_mcp_config">MCP Configuration</string>
+
+    <!-- Memory Module -->
+    <string name="memory_page_description">Manage saved memories. Swipe left or right to delete, or tap an item to edit it. Once added, the Agent will remember this information even in new conversations.</string>
+    <string name="memory_page_empty_description">No memories have been saved yet. Tap the top right to add your first memory.</string>
+    <string name="memory_loading">Loading memories...</string>
+    <string name="memory_editor_title_create">New Memory</string>
+    <string name="memory_editor_title_edit">Edit Memory</string>
+    <string name="memory_field_content">Content</string>
+    <string name="memory_field_content_hint">For example: The user\'s birthday is Month X Day Y</string>
+    <string name="memory_save_action">Save Memory</string>
+    <string name="memory_cancel_action">Cancel</string>
+    <string name="memory_delete_dialog_title">Delete Memory</string>
+    <string name="memory_delete_dialog_text">Are you sure you want to delete this memory?\n\n%1$s</string>
+    <string name="memory_delete_dialog_confirm">Delete</string>
+    <string name="memory_delete_dialog_cancel">Cancel</string>
+    <string name="delete_dialog_confirm">Delete</string>
+    <string name="delete_dialog_cancel">Cancel</string>
+    <string name="memory_error_load_failed">Failed to load memories: %1$s</string>
+    <string name="memory_error_save_failed">Failed to save memory: %1$s</string>
+    <string name="memory_error_delete_failed">Failed to delete memory: %1$s</string>
+
+    <!-- Execution Rules Module -->
+    <string name="execution_rules_page_description">Configure rules for Shell and tool execution. This page currently provides only the UI shell and is not yet wired into the actual interception flow.</string>
+    <string name="execution_rules_empty_action_hint">Tap the top right to add your first draft rule.</string>
+    <string name="execution_rules_loading">Loading execution rules...</string>
+    <string name="execution_rules_editor_title_create">New Execution Rule</string>
+    <string name="execution_rules_delete_dialog_title">Delete Execution Rule</string>
+    <string name="execution_rules_delete_dialog_text">Are you sure you want to delete the execution rule \"%1$s\"? This action cannot be undone.</string>
+    <string name="execution_rules_editor_description">Set up rules for Shell and tool execution. For now, this editor lets you manage rule drafts in the UI and is not yet wired into the actual interception flow.</string>
+    <string name="execution_rules_field_name">Rule Name</string>
+    <string name="execution_rules_field_name_hint">For example: Dangerous delete commands</string>
+    <string name="execution_rules_field_enabled_mode">Applies When</string>
+    <string name="execution_rules_enabled_mode_enabled">Always</string>
+    <string name="execution_rules_enabled_mode_locked_only">When screen is locked</string>
+    <string name="execution_rules_enabled_mode_disabled">Disabled</string>
+    <string name="execution_rules_field_patterns">Patterns</string>
+    <string name="execution_rules_field_patterns_hint">For example: \brm\s+-rf\b</string>
+    <string name="execution_rules_field_patterns_description">Enter one keyword or regular expression per line. The command is blocked as soon as any rule matches.</string>
+    <string name="execution_rules_error_name_required">Enter a rule name</string>
+    <string name="execution_rules_error_patterns_required">Enter at least one pattern</string>
+    <string name="execution_rules_save_action">Save Rule</string>
+
+    <!-- Takeover Module -->
+    <string name="takeover_default_responder">Default Responder</string>
+    <string name="takeover_page_description">Check rules in order and choose who should respond.</string>
+    <string name="takeover_empty_action_hint">Tap the top right to add your first takeover rule.</string>
+    <string name="takeover_loading">Loading takeover rules...</string>
+    <string name="takeover_editor_title_create">New Takeover Rule</string>
+    <string name="takeover_editor_description">Choose which requests go to the native assistant and which stay with Nexus.</string>
+    <string name="takeover_field_name">Rule Name</string>
+    <string name="takeover_field_name_hint">For example: Native assistant services</string>
+    <string name="takeover_field_enabled">Enable Rule</string>
+    <string name="takeover_field_target">Responder When Matched</string>
+    <string name="takeover_target_native_assistant">Native Assistant</string>
+    <string name="takeover_target_nexus">Nexus</string>
+    <string name="takeover_field_patterns">Rules</string>
+    <string name="takeover_field_patterns_hint">weather\n.*alarm.*\nopen.*</string>
+    <string name="takeover_field_patterns_description">Enter one keyword or regular expression per line. The selected responder is used as soon as any rule matches.</string>
+    <string name="takeover_save_action">Save Rule</string>
+    <string name="takeover_rule_enabled">Enabled</string>
+    <string name="takeover_rule_disabled">Disabled</string>
+    <string name="takeover_rule_summary_more"> and %1$d total</string>
+    <string name="takeover_error_name_required">Please enter a rule name</string>
+    <string name="takeover_error_patterns_required">Please enter at least one pattern</string>
+    <string name="takeover_error_load_failed_generic">Failed to load takeover rules</string>
+    <string name="takeover_error_load_failed">Failed to load takeover rules: %1$s</string>
+    <string name="takeover_error_save_failed_generic">Failed to save takeover rules</string>
+    <string name="takeover_error_save_failed">Failed to save takeover rules: %1$s</string>
+    <string name="takeover_error_delete_failed_generic">Failed to delete takeover rules</string>
+    <string name="takeover_delete_dialog_title">Delete Takeover Rule</string>
+    <string name="takeover_delete_dialog_text">Are you sure you want to delete the takeover rule \"%1$s\"? This action cannot be undone.</string>
+    <string name="takeover_error_delete_failed">Failed to delete takeover rules: %1$s</string>
+    <string name="takeover_save_failed">Failed to save: %1$s</string>
+
+    <!-- Builtin Tool Module -->
+    <string name="builtin_tool_page_description">Turn preset built-in tools on or off. Changes take effect in the next conversation.</string>
+    <string name="builtin_tool_loading">Loading built-in tool status...</string>
+    <string name="builtin_tool_empty">No built-in tools are available right now.</string>
+    <string name="builtin_tool_load_failed">Failed to load: %1$s</string>
+    <string name="builtin_tool_save_failed">Failed to save: %1$s</string>
+
+    <!-- Custom Tool Module -->
+    <string name="custom_tool_page_description">Manage your custom tools.</string>
+    <string name="custom_tool_page_empty_description">Let your Agent help you out, or tap the top right to create a new tool.</string>
+    <string name="custom_tool_loading">Loading saved custom tools...</string>
+    <string name="custom_tool_editor_title_create">New Custom Tool</string>
+    <string name="custom_tool_editor_description">Configure your custom tool. After saving, the Agent can call it when needed. Running commands carries risk, so use this feature with caution.</string>
+    <string name="custom_tool_field_name">Tool Name</string>
+    <string name="custom_tool_field_name_hint">For example: open_project</string>
+    <string name="custom_tool_field_description">Tool Description</string>
+    <string name="custom_tool_field_description_hint">Describe what this tool does so the Agent can understand it and use it at the right time.</string>
+    <string name="custom_tool_field_enabled">Enable Tool</string>
+    <string name="custom_tool_field_command">Command</string>
+    <string name="custom_tool_field_command_hint">For example: bash /sdcard/my_script.sh</string>
+    <string name="custom_tool_save_action">Save Custom Tool</string>
+    <string name="custom_tool_error_name_required">Please enter a tool name</string>
+    <string name="custom_tool_error_description_required">Please enter a tool description</string>
+    <string name="custom_tool_error_command_required">Please enter a command</string>
+    <string name="custom_tool_error_name_invalid">The name must start with a letter or underscore and contain only letters, numbers, or underscores</string>
+    <string name="custom_tool_error_name_duplicate">This name already exists. Please choose another one and try again</string>
+    <string name="custom_tool_error_name_reserved">This name is already used by a built-in tool</string>
+    <string name="custom_tool_error_command_unsafe">This command was blocked by the safety policy. Please adjust it and try again</string>
+    <string name="custom_tool_error_load_failed">Failed to load custom tools: %1$s</string>
+    <string name="custom_tool_error_save_failed">Failed to save custom tools: %1$s</string>
+    <string name="custom_tool_delete_dialog_title">Delete Custom Tool</string>
+    <string name="custom_tool_delete_dialog_text">Are you sure you want to delete the tool \"%1$s\"? This action cannot be undone.</string>
+    <string name="custom_tool_error_delete_failed">Failed to delete custom tools: %1$s</string>
+    <string name="custom_tool_save_failed">Failed to save: %1$s</string>
+
+    <!-- MCP Module -->
+    <string name="mcp_page_description">Configure connection and authentication for MCP services. After saving, Nexus will automatically discover available tools at runtime.</string>
+    <string name="mcp_page_empty_description">Tap the top right to add your first server.</string>
+    <string name="mcp_loading">Loading saved MCP services...</string>
+    <string name="mcp_editor_title_create">New MCP Service</string>
+    <string name="mcp_field_name">Name</string>
+    <string name="mcp_field_name_hint">For example: my-xxx-mcp-server</string>
+    <string name="mcp_field_url">URL</string>
+    <string name="mcp_field_url_hint">For example: https://a.b.c/mcp</string>
+    <string name="mcp_field_enabled">Enable Service</string>
+    <string name="mcp_field_headers">Custom Headers</string>
+    <string name="mcp_field_headers_hint">{\n  \"Authorization\": \"Bearer xxx\"\n}</string>
+    <string name="mcp_save_action">Save MCP Service</string>
+    <string name="mcp_error_name_required">Please enter a name</string>
+    <string name="mcp_error_name_duplicate">This name already exists. Please choose another one and try again</string>
+    <string name="mcp_error_url_required">Please enter a URL</string>
+    <string name="mcp_error_url_invalid">Only http:// or https:// URLs are supported</string>
+    <string name="mcp_error_headers_invalid_json">Headers are not valid JSON</string>
+    <string name="mcp_error_headers_not_object">Headers must be a JSON object</string>
+    <string name="mcp_error_headers_empty_key">Header names cannot be empty</string>
+    <string name="mcp_delete_dialog_title">Delete MCP Server</string>
+    <string name="mcp_delete_dialog_text">Are you sure you want to delete the MCP server \"%1$s\"? This action cannot be undone.</string>
+    <string name="mcp_error_headers_non_string">Header values must be strings</string>
+    <string name="update_dialog_title">New Version Available</string>
+    <string name="update_dialog_text">v%1$s is now available. Upgrade to get the latest features and fixes.</string>
+    <string name="update_dialog_confirm">Update</string>
+    <string name="update_dialog_cancel">Later</string>
+
+    <!-- Notification strings -->
+    <string name="notif_network_error_title">Network Error</string>
+    <string name="notif_network_error_body">Network connection failed. Please check your network and try again.</string>
+    <string name="notif_unsupported_version_title">Unsupported Host Version</string>
+    <string name="notif_unsupported_version_body">The current %1$s version is not yet supported by Nexus\nHost version: %2$s</string>
+    <string name="notif_unsupported_issue_title">[BUG] Unsupported host version</string>
+    <string name="notif_unsupported_issue_body">## Issue Description\nThe current version of %1$s is not yet supported by Nexus\nHost version: %2$s\n\n## Steps to Reproduce\n\n\n## Device Info\n- Assistant: %1$s\n- Assistant version: %2$s\n- Module version:</string>
+
+    <!-- Fallback -->
+    <string name="fallback_assistant_name">Assistant</string>
+
+    <!-- Host App Display Names -->
+    <string name="host_breeno_display_name">Breeno</string>
+    <string name="host_xiaoai_display_name">XiaoAi</string>
+
+    <!-- Error: MCP -->
+    <string name="error_mcp_load_failed">Failed to load MCP configuration</string>
+    <string name="error_mcp_save_failed">Failed to save MCP configuration</string>
+    <string name="error_mcp_delete_failed">Failed to delete MCP configuration</string>
+
+    <!-- Error: Execution Rules -->
+    <string name="error_exec_rules_load_failed">Failed to load execution rules</string>
+    <string name="error_exec_rules_save_failed">Failed to save execution rules</string>
+    <string name="error_exec_rules_delete_failed">Failed to delete execution rules</string>
+
+    <!-- Error: Skill -->
+    <string name="error_skill_load_failed">Failed to load skills</string>
+    <string name="error_skill_save_failed">Failed to save skill</string>
+    <string name="error_skill_read_failed">Failed to read skill</string>
+    <string name="error_skill_import_failed">Failed to import skill</string>
+    <string name="error_skill_delete_failed">Failed to delete skill</string>
+
+    <!-- Error: Custom Tool -->
+    <string name="error_custom_tool_load_failed">Failed to load custom tools</string>
+    <string name="error_custom_tool_save_failed">Failed to save custom tool</string>
+    <string name="error_custom_tool_delete_failed">Failed to delete custom tool</string>
+
+    <!-- Error: Memory -->
+    <string name="error_memory_load_failed">Failed to load memories</string>
+    <string name="error_memory_save_failed">Failed to save memory</string>
+    <string name="error_memory_delete_failed">Failed to delete memory</string>
+
+    <!-- Feedback templates -->
+    <string name="feedback_feature_template">## Feature Suggestion\n\n## Use Case\n\n## Expected Result</string>
+    <string name="feedback_bug_template">## Issue Description\n\n## Steps to Reproduce\n\n## Expected Behavior\n\n## Actual Behavior\n\n## Device Info\n- Android version:\n- Assistant (Breeno or other):\n- Module version:\n\n## More\nYou can attach logs, screenshots, or recordings to help us understand the issue.</string>
+</resources>

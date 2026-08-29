@@ -1,0 +1,92 @@
+package com.niki914.nexus.agentic.repo
+
+import com.niki914.nexus.agentic.runtime.settings.RuntimeSettingsGateway
+import com.niki914.nexus.agentic.runtime.settings.model.RuntimeBuiltinToolSetting
+import com.niki914.nexus.agentic.runtime.settings.model.RuntimeCustomTool
+import com.niki914.nexus.agentic.runtime.settings.model.RuntimeCustomToolValidation
+import com.niki914.nexus.agentic.runtime.settings.model.RuntimeExecutionRule
+import com.niki914.nexus.agentic.runtime.settings.model.RuntimeLlmConfig
+import com.niki914.nexus.agentic.runtime.settings.model.RuntimeLoadedSkill
+import com.niki914.nexus.agentic.runtime.settings.model.RuntimeMcpServer
+import com.niki914.nexus.agentic.runtime.settings.model.RuntimeMcpTool
+import com.niki914.nexus.agentic.runtime.settings.model.RuntimeSkillMetadata
+
+class XRepoRuntimeGateway(
+    private val repo: XRepo = XRepo,
+) : RuntimeSettingsGateway {
+    override suspend fun readLlmConfig(agentId: String): RuntimeLlmConfig {
+        val llm = repo.agents.llm(agentId)
+        val memories = repo.agents.memoriesFor(agentId)
+        return llm.copy(memories = memories)
+    }
+
+    override suspend fun listMcpServers(): List<RuntimeMcpServer> = repo.mcp.list()
+
+    override suspend fun listEnabledSkills(): List<RuntimeSkillMetadata> {
+        return repo.skills.listEnabled()
+    }
+
+    override suspend fun loadSkill(id: String): RuntimeLoadedSkill? {
+        return repo.skills.getDetail(id)
+    }
+
+    override suspend fun listCachedTools(server: RuntimeMcpServer): List<RuntimeMcpTool> {
+        return repo.mcp.cachedTools(server)
+    }
+
+    override suspend fun saveDiscoveredTools(
+        url: String,
+        headers: Map<String, String>,
+        tools: List<RuntimeMcpTool>,
+    ) {
+        repo.mcp.saveDiscoveredTools(url, headers, tools)
+    }
+
+    override suspend fun clearMcpCacheByServerNames(names: Set<String>) {
+        repo.mcp.clearCacheByServerNames(names)
+    }
+
+    override suspend fun fingerprintMcpServers(): String = repo.mcp.fingerprint()
+
+    override suspend fun addMemory(value: String) {
+        repo.memory.add(value)
+    }
+
+    override suspend fun listCustomTools(): List<RuntimeCustomTool> = repo.customTools.list()
+
+    override suspend fun saveCustomTool(
+        tool: RuntimeCustomTool,
+        overwrite: Boolean,
+    ): RuntimeCustomToolValidation? {
+        return repo.customTools.save(tool, overwrite)
+    }
+
+    override suspend fun replaceAllCustomTools(
+        tools: List<RuntimeCustomTool>,
+    ): RuntimeCustomToolValidation? {
+        return repo.customTools.replaceAll(tools)
+    }
+
+    override suspend fun deleteCustomTool(name: String) {
+        repo.customTools.delete(name)
+    }
+
+    override suspend fun setCustomToolEnabled(name: String, enabled: Boolean) {
+        repo.customTools.setEnabled(name, enabled)
+    }
+
+    override suspend fun listBuiltinToolSettings(): List<RuntimeBuiltinToolSetting> {
+        return repo.builtinTools.list()
+    }
+
+    override suspend fun setBuiltinToolEnabled(
+        name: String,
+        enabled: Boolean,
+    ): RuntimeCustomToolValidation? {
+        return repo.builtinTools.setEnabled(name, enabled)
+    }
+
+    override suspend fun listExecutionRules(): List<RuntimeExecutionRule> {
+        return repo.executionRules.list()
+    }
+}

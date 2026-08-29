@@ -1,0 +1,40 @@
+﻿# ROM inputs and generated artifacts
+input/
+build/
+out/
+artifacts/
+*.img
+*.bin
+*.zst
+*.zip
+*.apk
+*.apks
+*.aab
+*.tar
+*.tar.gz
+*.tar.zst
+
+# Android/Gradle local state
+.gradle/
+**/.gradle/
+**/build/
+local.properties
+.idea/
+*.iml
+
+# Secrets and signing material
+.env
+*.key
+*.pem
+*.jks
+*.keystore
+secrets/
+
+# Python/tooling state
+.tools/
+__pycache__/
+*.pyc
+
+# OS/editor
+.DS_Store
+Thumbs.db
