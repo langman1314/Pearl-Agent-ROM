@@ -95,7 +95,7 @@ class SkillFileRepositoryTest {
         val fileB = writeSkill(skillsRoot, "skill-b", originalB)
         val aliasDir = File(skillsRoot, "skill-a")
         aliasDir.mkdirs()
-        Files.createSymbolicLink(File(aliasDir, "SKILL.md").toPath(), fileB.toPath())
+        createSymbolicLinkOrSkip(File(aliasDir, "SKILL.md").toPath(), fileB.toPath())
         val repository = SkillFileRepository(skillsRoot)
 
         val validation = repository.saveContent("skill-a", skillContent(name = "A2"))

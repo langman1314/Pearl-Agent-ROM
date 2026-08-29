@@ -42,6 +42,7 @@ class XRepoTest {
                 StoreDescriptorRegistry.AGENT_REGISTRY_ID,
                 StoreDescriptorRegistry.TOOLS_CUSTOM_ID,
                 StoreDescriptorRegistry.RULES_EXECUTION_ID,
+                StoreDescriptorRegistry.TOOLS_MCP_SERVERS_ID,
             ),
             store.writeIds,
         )
@@ -66,6 +67,16 @@ class XRepoTest {
         assertEquals(
             LocalSettingsDefaults.defaultExecutionRules,
             RuleSettingsCodec.parseExecutionRules(store.jsonFor(StoreDescriptorRegistry.RULES_EXECUTION_ID)),
+        )
+        assertEquals(
+            listOf(
+                McpServer(
+                    name = "Hermes",
+                    url = "http://127.0.0.1:51338/mcp",
+                    enabled = true,
+                )
+            ),
+            McpSettingsCodec.parseServers(store.jsonFor(StoreDescriptorRegistry.TOOLS_MCP_SERVERS_ID)),
         )
     }
 

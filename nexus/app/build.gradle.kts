@@ -185,8 +185,8 @@ val startServer = tasks.register("startServer") {
 
 // 自动挂载
 tasks.configureEach {
-    // 只要是执行安装或者构建，就尝试运行这两个任务
-    if (name.startsWith("install") || name.startsWith("assemble")) {
+    // 只有安装任务需要连接设备；普通 assemble/test 必须可离线运行。
+    if (name.startsWith("install")) {
         dependsOn(adbReverse)
 //        dependsOn(startServer)
     }

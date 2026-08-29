@@ -76,7 +76,7 @@ class SkillPathResolverTest {
         val skillsRoot = temporaryFolder.newFolder("skills")
         val outside = temporaryFolder.newFolder("outside")
         writeSkill(outside, "escape")
-        Files.createSymbolicLink(File(skillsRoot, "link").toPath(), outside.toPath())
+        createSymbolicLinkOrSkip(File(skillsRoot, "link").toPath(), outside.toPath())
 
         val result = SkillPathResolver(skillsRoot).resolveSkillFile("link/escape")
 
@@ -89,7 +89,7 @@ class SkillPathResolverTest {
         val realFile = writeSkill(skillsRoot, "skill-b")
         val aliasDir = File(skillsRoot, "skill-a")
         aliasDir.mkdirs()
-        Files.createSymbolicLink(File(aliasDir, "SKILL.md").toPath(), realFile.toPath())
+        createSymbolicLinkOrSkip(File(aliasDir, "SKILL.md").toPath(), realFile.toPath())
 
         val result = SkillPathResolver(skillsRoot).resolveSkillFile("skill-a")
 
