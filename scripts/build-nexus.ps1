@@ -30,8 +30,21 @@ Write-Output '[bootstrap] Installing Android SDK packages...'
 & $SdkManager "--sdk_root=$SdkRoot" 'platform-tools' 'platforms;android-36' 'build-tools;35.0.0'
 if ($LASTEXITCODE -ne 0) { throw "sdkmanager package install failed with exit code $LASTEXITCODE" }
 
+$SourceProject = Join-Path $Root 'nexus'
+$BuildRoot = if ([string]::IsNullOrWhiteSpace($env:PEARL_BUILD_ROOT)) {
+    Join-Path ([System.IO.Path]::GetPathRoot($Root)) 'PearlAgentBuild'
+} else {
+    $env:PEARL_BUILD_ROOT
+}
+$BuildProject = Join-Path $BuildRoot 'nexus'
+New-Item -ItemType Directory -Path $BuildProject -Force | Out-Null
+
+Write-Output "[bootstrap] Mirroring Nexus to ASCII build path: $BuildProject"
+& robocopy.exe $SourceProject $BuildProject /MIR /XD .gradle build /XF local.properties /NFL /NDL /NJH /NJS /NP | Out-Host
+if ($LASTEXITCODE -gt 7) { throw "robocopy failed with exit code $LASTEXITCODE" }
+
 Write-Output '[bootstrap] Running Nexus unit tests and debug build...'
-Push-Location (Join-Path $Root 'nexus')
+Push-Location $BuildProject
 try {
     & '.\gradlew.bat' --no-daemon testDebugUnitTest assembleDebug
     if ($LASTEXITCODE -ne 0) { throw "Gradle failed with exit code $LASTEXITCODE" }
@@ -39,6 +52,12 @@ try {
     Pop-Location
 }
 
+$ArtifactDir = Join-Path $Root 'artifacts'
+New-Item -ItemType Directory -Path $ArtifactDir -Force | Out-Null
+$BuiltApks = Get-ChildItem -LiteralPath (Join-Path $BuildProject 'app\build\outputs\apk\debug') -Filter *.apk -File
+foreach ($apk in $BuiltApks) {
+    $destination = Join-Path $ArtifactDir 'nexus-1.0.1-pearl.1-debug.apk'
+    Copy-Item -LiteralPath $apk.FullName -Destination $destination -Force
+    Write-Output $destination
+}
 Write-Output '[bootstrap] Build completed.'
-Get-ChildItem -LiteralPath (Join-Path $Root 'nexus\app\build\outputs\apk\debug') -Filter *.apk -File |
-    Select-Object -ExpandProperty FullName
