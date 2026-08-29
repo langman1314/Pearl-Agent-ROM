@@ -6,7 +6,7 @@
 ./scripts/bootstrap-android.sh
 ```
 
-脚本把 Eclipse Temurin JDK 17 和 Android SDK 放入仓库根目录 `.tools/`，不修改系统级 Java/Android Studio。固定 Android command-line tools `13114758`，安装 `platforms;android-36`、`build-tools;35.0.0` 和 platform-tools。Android 16 对应 API 36；上游的 compileSdk 37 在稳定 SDK 仓库中不可用，然后执行：
+脚本把 Eclipse Temurin JDK 17 和 Android SDK 放入仓库根目录 `.tools/`，不修改系统级 Java/Android Studio。固定 Android command-line tools `13114758`，通过 preview channel 安装 `platforms;android-37.0`、`build-tools;37.0.0` 和 platform-tools。上游 Compose 1.12 alpha / Material3 1.5 alpha 的 AAR metadata 要求 compileSdk 37；应用的 targetSdk 仍为 34，然后执行：
 
 ```bash
 ./gradlew --no-daemon testDebugUnitTest assembleDebug

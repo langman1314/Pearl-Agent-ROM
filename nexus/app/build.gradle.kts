@@ -13,7 +13,7 @@ ksp {
 
 android {
     namespace = "com.niki914.nexus.agentic.app"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.niki914.nexus.agentic"

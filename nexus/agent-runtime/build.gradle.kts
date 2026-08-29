@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.niki914.nexus.agentic.runtime"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 26
