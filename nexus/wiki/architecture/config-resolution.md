@@ -35,6 +35,8 @@
 
 `XRepo.tryPutDefaultSettings()` 在 onboarding 未完成时会初始化 `agent.main.config`、`agent.main.memory`、`agents.registry`、`tools.custom` 和 `rules.execution`。其中 `agents.registry` 会写入默认的 `main` agent profile。
 
+Pearl 版在默认设置写入完成后调用 `HermesMcpProvisioner`。它仅通过固定命令读取 `/data/adb/pearl-agent/data/config/mcp-token`，只接受 64 位 hex token，并为精确 URL `http://127.0.0.1:51338/mcp` 写入 `Authorization: Bearer ...` header。token 只落入 Nexus 私有 `tools.mcp.servers` store；读取 root 失败、token 非法或 `Hermes` 名称已被用户用于其他 URL 时均 fail closed，不修改设置，也不影响 XiaoAi 原生回复。
+
 ## 主 App 初始化链路
 
 主 App 启动时的配置相关初始化分成两层：

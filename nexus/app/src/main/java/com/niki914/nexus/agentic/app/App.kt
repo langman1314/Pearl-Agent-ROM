@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.appcompat.app.AppCompatDelegate
 import com.google.android.material.color.DynamicColors
 import com.niki914.nexus.agentic.app.conversation.ConversationRepo
+import com.niki914.nexus.agentic.repo.HermesMcpProvisioner
 import com.niki914.nexus.agentic.repo.UpdateCheckHolder
 import com.niki914.nexus.agentic.repo.XRepo
 import com.niki914.nexus.agentic.runtime.createAppRuntimeBridge
@@ -31,7 +32,12 @@ class App : Application() {
             UpdateCheckHolder.runOnce(BuildConfig.VERSION_NAME)
         }
         applicationScope.launch {
+            // Defaults must land before root-token provisioning so onboarding
+            // cannot overwrite the authenticated Hermes server with its public
+            // no-header template. Failure is intentionally fail-open to Nexus:
+            // Hermes stays unavailable while native XiaoAi remains operational.
             XRepo.tryPutDefaultSettings()
+            HermesMcpProvisioner.provision()
         }
         applicationScope.launch {
             XRepo.skills.seedDefaults()
