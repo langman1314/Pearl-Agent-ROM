@@ -1,0 +1,14 @@
+{
+  "host": "127.0.0.1",
+  "port": 51338,
+  "path": "/mcp",
+  "provider": "deepseek",
+  "model": "deepseek-v4-pro",
+  "max_iterations": 80,
+  "run_budget_seconds": 900,
+  "workdir": "/data/pearl-agent/workspace",
+  "state_db": "/data/pearl-agent/state/hermes-bridge.db",
+  "session_prefix": "pearl-nexus",
+  "enabled_toolsets": ["terminal", "file", "web", "skills", "memory", "delegation", "todo"],
+  "disabled_toolsets": []
+}

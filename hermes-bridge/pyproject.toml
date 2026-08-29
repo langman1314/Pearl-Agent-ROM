@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pearl-hermes-bridge"
+version = "0.1.0"
+description = "Loopback MCP bridge from Nexus to Hermes Agent"
+requires-python = ">=3.11,<3.14"
+license = "MIT"
+dependencies = ["mcp==2.0.0"]
+
+[project.scripts]
+pearl-hermes-bridge = "pearl_hermes_bridge.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
