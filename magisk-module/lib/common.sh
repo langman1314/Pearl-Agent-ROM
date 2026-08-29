@@ -7,7 +7,9 @@ DATA_ROOT="$STATE_ROOT/data"
 LOG_DIR="$DATA_ROOT/logs"
 RUN_DIR="$STATE_ROOT/run"
 PID_FILE="$RUN_DIR/hermes-bridge.pid"
+SUPERVISOR_PID_FILE="$RUN_DIR/supervisor.pid"
 DISABLED_FILE="$STATE_ROOT/disabled"
+MCP_TOKEN_FILE="$DATA_ROOT/config/mcp-token"
 SUPERVISOR_LOG="$LOG_DIR/supervisor.log"
 
 mkdir_safe() {
@@ -25,10 +27,25 @@ pid_is_running() {
   [ -n "$pid" ] && [ -d "/proc/$pid" ] && kill -0 "$pid" 2>/dev/null
 }
 
+process_start_time() {
+  pid="$1"
+  [ -r "/proc/$pid/stat" ] || return 1
+  awk '{print $22}' "/proc/$pid/stat"
+}
+
 read_bridge_pid() {
   [ -f "$PID_FILE" ] || return 1
-  pid="$(cat "$PID_FILE" 2>/dev/null)"
+  read -r pid expected_start < "$PID_FILE" || return 1
+  case "$pid:$expected_start" in
+    *[!0-9:]*) return 1 ;;
+  esac
   pid_is_running "$pid" || return 1
+  [ "$(process_start_time "$pid" 2>/dev/null)" = "$expected_start" ] || return 1
+  cmdline="$(tr '\000' ' ' < "/proc/$pid/cmdline" 2>/dev/null)"
+  case "$cmdline" in
+    *pearl-hermes-bridge*) ;;
+    *) return 1 ;;
+  esac
   printf '%s\n' "$pid"
 }
 
@@ -37,28 +54,36 @@ stop_bridge() {
     rm -f "$PID_FILE"
     return 0
   }
-  pearl_log "Stopping Hermes bridge pid=$pid"
-  kill -TERM "$pid" 2>/dev/null || true
+  pearl_log "Stopping Hermes bridge process group=$pid"
+  kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
   count=0
   while pid_is_running "$pid" && [ "$count" -lt 20 ]; do
     sleep 1
     count=$((count + 1))
   done
   if pid_is_running "$pid"; then
-    pearl_log "Hermes bridge ignored TERM; sending KILL pid=$pid"
-    kill -KILL "$pid" 2>/dev/null || true
+    pearl_log "Hermes bridge group ignored TERM; sending KILL group=$pid"
+    kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
   fi
   rm -f "$PID_FILE"
 }
 
 is_mounted_at() {
-  grep -q " $1 " /proc/mounts 2>/dev/null
+  awk -v target="$1" '$2 == target { found=1 } END { exit !found }' /proc/mounts 2>/dev/null
 }
 
 mount_bind_once() {
   source_path="$1"
   target_path="$2"
   mkdir -p "$target_path"
+  is_mounted_at "$target_path" || mount --bind "$source_path" "$target_path"
+}
+
+mount_bind_file_once() {
+  source_path="$1"
+  target_path="$2"
+  mkdir -p "${target_path%/*}"
+  [ -e "$target_path" ] || : > "$target_path"
   is_mounted_at "$target_path" || mount --bind "$source_path" "$target_path"
 }
 
@@ -101,10 +126,20 @@ mount_chroot() {
   mkdir_safe "$RUN_DIR" 0700
 
   mount_bind_once "$DATA_ROOT" "$ROOTFS/data/pearl-agent" || return 1
-  mount_bind_once /dev "$ROOTFS/dev" || return 1
-  mount_fs_once proc proc "$ROOTFS/proc" || return 1
-  mount_fs_once sysfs sysfs "$ROOTFS/sys" || return 1
-  mount_fs_once devpts devpts "$ROOTFS/dev/pts" -o mode=0620,ptmxmode=0666 || return 1
+  mount_fs_once proc proc "$ROOTFS/proc" -o nosuid,nodev,noexec || return 1
+  mount_fs_once tmpfs tmpfs "$ROOTFS/dev" -o mode=0755,nosuid || return 1
+  mkdir -p "$ROOTFS/dev/pts" "$ROOTFS/dev/shm"
+  chmod 1777 "$ROOTFS/dev/shm"
+  mount_fs_once devpts devpts "$ROOTFS/dev/pts" -o mode=0620,ptmxmode=0666,nosuid,noexec || return 1
+  rm -f "$ROOTFS/dev/ptmx" "$ROOTFS/dev/fd" "$ROOTFS/dev/stdin" "$ROOTFS/dev/stdout" "$ROOTFS/dev/stderr"
+  ln -s pts/ptmx "$ROOTFS/dev/ptmx"
+  ln -s /proc/self/fd "$ROOTFS/dev/fd"
+  ln -s /proc/self/fd/0 "$ROOTFS/dev/stdin"
+  ln -s /proc/self/fd/1 "$ROOTFS/dev/stdout"
+  ln -s /proc/self/fd/2 "$ROOTFS/dev/stderr"
+  for node in null zero full random urandom tty; do
+    mount_bind_file_once "/dev/$node" "$ROOTFS/dev/$node" || return 1
+  done
   mount_fs_once tmpfs tmpfs "$ROOTFS/run" -o mode=0755,nosuid,nodev || return 1
   write_resolv_conf
 }
@@ -116,10 +151,12 @@ unmount_one() {
 }
 
 unmount_chroot() {
+  for node in tty urandom random full zero null; do
+    unmount_one "$ROOTFS/dev/$node"
+  done
   unmount_one "$ROOTFS/dev/pts"
   unmount_one "$ROOTFS/run"
   unmount_one "$ROOTFS/proc"
-  unmount_one "$ROOTFS/sys"
   unmount_one "$ROOTFS/dev"
   unmount_one "$ROOTFS/data/pearl-agent"
 }

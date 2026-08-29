@@ -64,8 +64,13 @@ actual_zstd_hash="$(sha256sum "$ZSTD_BINARY" | awk '{print $1}')"
   echo "zstd SHA-256 mismatch: got $actual_zstd_hash" >&2
   exit 1
 }
-file "$ZSTD_BINARY" | grep -Eqi 'ELF 64-bit LSB.*(ARM aarch64|ARM64)' || {
+zstd_file_info="$(file "$ZSTD_BINARY")"
+printf '%s\n' "$zstd_file_info" | grep -Eqi 'ELF 64-bit LSB.*(ARM aarch64|ARM64)' || {
   echo "zstd payload is not an ARM64 ELF executable" >&2
+  exit 1
+}
+printf '%s\n' "$zstd_file_info" | grep -Eqi '(statically linked|static-pie linked)' || {
+  echo "zstd payload is dynamically linked and cannot run in the Magisk installer" >&2
   exit 1
 }
 

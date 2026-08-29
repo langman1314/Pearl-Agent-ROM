@@ -21,6 +21,7 @@ class BridgeConfig:
     max_result_chars: int = 120_000
     workdir: str = "/data/pearl-agent/workspace"
     state_db: str = "/data/pearl-agent/state/hermes-bridge.db"
+    shared_secret_file: str = "/data/pearl-agent/config/mcp-token"
     session_prefix: str = "pearl-nexus"
     enabled_toolsets: list[str] = field(
         default_factory=lambda: [
@@ -56,6 +57,8 @@ class BridgeConfig:
             raise ValueError("MCP path must start with /")
         if not self.provider.strip() or not self.model.strip():
             raise ValueError("Hermes provider and model are required")
+        if not self.shared_secret_file.strip():
+            raise ValueError("MCP shared_secret_file is required")
         if not 1 <= self.max_iterations <= 500:
             raise ValueError("max_iterations must be between 1 and 500")
         if not 10 <= self.run_budget_seconds <= 86_400:

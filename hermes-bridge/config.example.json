@@ -8,6 +8,7 @@
   "run_budget_seconds": 900,
   "workdir": "/data/pearl-agent/workspace",
   "state_db": "/data/pearl-agent/state/hermes-bridge.db",
+  "shared_secret_file": "/data/pearl-agent/config/mcp-token",
   "session_prefix": "pearl-nexus",
   "enabled_toolsets": ["terminal", "file", "web", "skills", "memory", "delegation", "todo"],
   "disabled_toolsets": []

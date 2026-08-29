@@ -4,6 +4,7 @@ import json
 import os
 import queue
 import re
+import stat
 import threading
 import traceback
 from pathlib import Path
@@ -39,6 +40,15 @@ def render_task_prompt(goal: str, context: str) -> str:
 
 class HermesRuntime:
     def __init__(self, config: BridgeConfig):
+        hermes_home_raw = os.environ.get("HERMES_HOME", "").strip()
+        if not hermes_home_raw:
+            raise RuntimeError("HERMES_HOME must be explicitly set for the Pearl bridge")
+        hermes_env = Path(hermes_home_raw) / ".env"
+        if not hermes_env.is_file():
+            raise FileNotFoundError(f"Hermes secret environment file not found: {hermes_env}")
+        if stat.S_IMODE(hermes_env.stat().st_mode) & 0o077:
+            raise PermissionError("Hermes .env must not be group/world accessible")
+
         self.config = config
         self._agents: dict[str, Any] = {}
         self._locks: dict[str, threading.RLock] = {}

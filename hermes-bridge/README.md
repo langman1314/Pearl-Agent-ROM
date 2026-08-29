@@ -5,8 +5,8 @@
 ## 安全边界
 
 - 仅允许 numeric loopback 地址，不能监听局域网或公网；
-- bridge JSON 只存非秘密配置；
-- `DEEPSEEK_API_KEY` 写入 `$HERMES_HOME/.env`，不得进入 ROM/Git；
+- bridge JSON 只存非秘密配置；MCP 必须使用 Magisk 首次安装生成的 256-bit Bearer token；
+- token 文件和 `DEEPSEEK_API_KEY` 都是 `0600`，不得进入 ROM/Git 或日志；
 - SQLite 使用 WAL + FULL synchronous；
 - 单 worker 执行长任务，避免手机内存/温度失控；
 - bridge 重启时，仅恢复未开始的 queued 任务；已运行任务因副作用完成状态不明而 fail closed，不自动重放；
@@ -37,7 +37,12 @@ uv pip install '/opt/pearl-agent/hermes-agent[mcp]'
 uv pip install /opt/pearl-agent/hermes-bridge
 install -Dm600 /dev/null /data/pearl-agent/hermes-home/.env
 install -Dm600 config.example.json /data/pearl-agent/config/hermes-bridge.json
+umask 077
+python3 -c 'import secrets; print(secrets.token_hex(32))' \
+  > /data/pearl-agent/config/mcp-token
 ```
+
+Nexus 的 Hermes MCP server headers 必须保存为 `{"Authorization":"Bearer <mcp-token>"}`。Magisk 安装器会自动生成该 token；不得在 UI、日志或备份中明文展示。
 
 Hermes 密钥文件：
 

@@ -6,17 +6,31 @@ import json
 from pathlib import Path
 
 from mcp.server import MCPServer
+from mcp.server.auth.settings import AuthSettings
 
 from . import __version__
+from .auth import SharedSecretVerifier
 from .config import BridgeConfig
 from .runtime import HermesRuntime, TaskWorker, normalize_session_id, task_json
 from .store import TaskStore
 
 
+def _loopback_url(config: BridgeConfig, include_path: bool = False) -> str:
+    authority = f"[{config.host}]" if ":" in config.host else config.host
+    suffix = config.path if include_path else ""
+    return f"http://{authority}:{config.port}{suffix}"
+
+
 def create_server(config: BridgeConfig) -> tuple[MCPServer, TaskStore, TaskWorker]:
     config = config.validated()
-    store = TaskStore(config.state_db)
+    token_verifier = SharedSecretVerifier.from_file(config.shared_secret_file)
+    auth = AuthSettings(
+        issuer_url=_loopback_url(config),
+        resource_server_url=_loopback_url(config, include_path=True),
+        required_scopes=["pearl.hermes"],
+    )
     runtime = HermesRuntime(config)
+    store = TaskStore(config.state_db)
     worker = TaskWorker(config, store, runtime)
     worker.start()
 
@@ -28,6 +42,8 @@ def create_server(config: BridgeConfig) -> tuple[MCPServer, TaskStore, TaskWorke
             "Use hermes_run only for short work that can finish in the current MCP call."
         ),
         log_level="INFO",
+        auth=auth,
+        token_verifier=token_verifier,
     )
 
     @server.tool()

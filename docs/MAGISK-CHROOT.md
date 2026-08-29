@@ -35,13 +35,14 @@ The rootfs can be replaced atomically without overwriting user data, API keys, H
 
 1. `post-fs-data.sh` validates the rootfs and prepares bind mounts:
    - persistent data at `/data/pearl-agent` inside chroot;
-   - `/dev`, `proc`, `sysfs`, `devpts`, and an isolated tmpfs `/run`;
+   - minimal tmpfs `/dev` with only null/zero/full/random/urandom/tty plus `devpts`; host `/dev/block` is never exposed;
+   - restricted `proc` and an isolated tmpfs `/run`; host `sysfs` is not mounted;
    - generated `/etc/resolv.conf` from Android DNS properties, with conservative fallbacks.
 2. `service.sh` waits for `sys.boot_completed=1`.
 3. It launches only `pearl-hermes-bridge-wrapper` through `chroot` with a minimal explicit environment.
-4. If the process exits quickly, the supervisor backs off `2 → 5 → 15 → 30 → 60 → 120` seconds.
-5. More than five short crashes in ten minutes opens a 30-minute fuse to protect battery and temperature.
-6. A runtime that stays alive for five minutes resets crash counters.
+4. The bridge runs in its own process group; PID plus `/proc` start-time/cmdline identity prevents PID-reuse kills, and shutdown terminates descendants before unmount.
+5. If the process exits, the supervisor backs off `2 → 5 → 15 → 30 → 60 → 120` seconds.
+6. Three consecutive runs shorter than 15 minutes open a 30-minute fuse to protect battery and temperature; only a 15-minute healthy run resets the crash count.
 
 No Android application partition is mounted into the chroot. The Hermes terminal is intentionally scoped to its persistent workspace unless a later, explicit Android-control bridge is approved.
 
@@ -51,7 +52,8 @@ No Android application partition is mounted into the chroot. The Hermes terminal
 
 - rejects devices whose product-device properties do not include `pearl`;
 - requires Android SDK 35 or newer and Magisk 27.0 or newer;
-- verifies `payload/manifest.sha256`;
+- verifies `payload/manifest.sha256` and requires a statically linked ARM64 zstd decoder;
+- generates a 256-bit MCP Bearer token from `/dev/urandom`, stored only as `0600` under persistent data;
 - runs zstd integrity validation before extraction;
 - checks the extracted Hermes commit against `a2e19d484cb5591df8dafe667c93345b62d9bf06`;
 - extracts into `rootfs.new.<pid>`;

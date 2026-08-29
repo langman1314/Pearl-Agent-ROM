@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import threading
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from pearl_hermes_bridge.auth import SharedSecretVerifier
 from pearl_hermes_bridge.config import BridgeConfig
-from pearl_hermes_bridge.runtime import TaskWorker, normalize_session_id, render_task_prompt
+from pearl_hermes_bridge.runtime import HermesRuntime, TaskWorker, normalize_session_id, render_task_prompt
 from pearl_hermes_bridge.store import TaskStore
 
 
@@ -29,6 +32,45 @@ class ConfigTest(unittest.TestCase):
             path.write_text('{"secret_api_key":"must-not-live-here"}')
             with self.assertRaises(ValueError):
                 BridgeConfig.from_file(path)
+
+
+class SharedSecretVerifierTest(unittest.IsolatedAsyncioTestCase):
+    async def test_rejects_wrong_token_without_importing_mcp_runtime(self):
+        verifier = SharedSecretVerifier("a" * 64)
+        self.assertIsNone(await verifier.verify_token("b" * 64))
+
+    @unittest.skipIf(os.name == "nt", "NTFS chmod does not expose POSIX group/world mode semantics")
+    def test_requires_root_only_file_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp, "mcp-token")
+            path.write_text("a" * 64)
+            os.chmod(path, 0o644)
+            with self.assertRaises(PermissionError):
+                SharedSecretVerifier.from_file(path)
+            os.chmod(path, 0o600)
+            SharedSecretVerifier.from_file(path)
+
+    def test_rejects_short_secret(self):
+        with self.assertRaises(ValueError):
+            SharedSecretVerifier("too-short")
+
+
+class HermesRuntimeConfigTest(unittest.TestCase):
+    def test_requires_explicit_hermes_home(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(RuntimeError):
+                HermesRuntime(BridgeConfig(workdir=tempfile.gettempdir()))
+
+    def test_rejects_public_hermes_env(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp, "hermes")
+            home.mkdir()
+            env_file = home / ".env"
+            env_file.write_text("")
+            os.chmod(env_file, 0o644)
+            with patch.dict(os.environ, {"HERMES_HOME": str(home)}, clear=True):
+                with self.assertRaises(PermissionError):
+                    HermesRuntime(BridgeConfig(workdir=str(Path(tmp, "work"))))
 
 
 class RuntimeBoundaryTest(unittest.TestCase):

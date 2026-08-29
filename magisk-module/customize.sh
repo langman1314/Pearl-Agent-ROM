@@ -95,6 +95,15 @@ if [ ! -f "$DATA_ROOT/hermes-home/.env" ]; then
   : > "$DATA_ROOT/hermes-home/.env"
   chmod 0600 "$DATA_ROOT/hermes-home/.env"
 fi
+if [ ! -f "$MCP_TOKEN_FILE" ]; then
+  old_umask="$(umask)"
+  umask 077
+  head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$MCP_TOKEN_FILE"
+  umask "$old_umask"
+fi
+chmod 0600 "$MCP_TOKEN_FILE"
+token_length="$(wc -c < "$MCP_TOKEN_FILE" | tr -d ' ')"
+[ "$token_length" -ge 64 ] || abort "! Generated MCP token is unexpectedly short"
 
 ui_print "- Atomically activating rootfs; preserving one rollback version"
 rm -rf "$PREVIOUS_ROOTFS"
