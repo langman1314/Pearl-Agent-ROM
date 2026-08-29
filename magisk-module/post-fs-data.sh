@@ -23,6 +23,9 @@ try_automatic_rollback() {
   [ -d "$PREVIOUS_ROOTFS" ] || return 1
   pearl_log "post-fs-data: three mount-failed boots; attempting one-version automatic rollback"
   unmount_chroot
+  for old_failed in "$STATE_ROOT"/rootfs.failed.mount.*; do
+    [ -d "$old_failed" ] && rm -rf "$old_failed"
+  done
   failed="$STATE_ROOT/rootfs.failed.mount.$(date +%s).$$"
   if [ -d "$ROOTFS" ] && ! mv "$ROOTFS" "$failed"; then
     pearl_log "post-fs-data: could not quarantine failed rootfs"

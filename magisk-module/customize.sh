@@ -92,6 +92,10 @@ ui_print "- Extracting verified Debian ARM64 rootfs"
   rm -rf "$stage"
   abort "! Rootfs extraction failed; current rootfs was not changed"
 }
+if find "$stage" -type f | grep -Eqi '(^|/)(boot|init_boot|vendor_boot|recovery|dtbo|vbmeta(_system|_vendor)?|super|system|system_ext|vendor|odm|product|mi_ext|preloader|efuse|gpt|lk|abl|xbl[^/]*)(_raw)?(_[ab])?\.(img|bin|elf)$'; then
+  rm -rf "$stage"
+  abort "! Extracted rootfs contains a forbidden Android partition payload"
+fi
 
 [ -x "$stage/usr/local/sbin/pearl-hermes-bridge-wrapper" ] || {
   rm -rf "$stage"

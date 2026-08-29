@@ -35,7 +35,7 @@ The rootfs can be replaced atomically without overwriting user data, API keys, H
 
 1. `post-fs-data.sh` validates the rootfs and prepares bind mounts:
    - persistent data at `/data/pearl-agent` inside chroot;
-   - minimal tmpfs `/dev` with only null/zero/full/random/urandom/tty plus `devpts`; host `/dev/block` is never exposed;
+   - minimal tmpfs `/dev` with only null/zero/full/random/urandom/tty plus a private `devpts` `newinstance`; host `/dev/block` is never exposed;
    - restricted `proc` and an isolated tmpfs `/run`; host `sysfs` is not mounted;
    - generated `/etc/resolv.conf` from Android DNS properties, with conservative fallbacks.
    - persistent mount-failure count; after three failed boots it tries `rootfs.previous` once, quarantines the failed tree, and disables the runtime if both versions fail.
@@ -59,6 +59,7 @@ No Android application partition is mounted into the chroot. The Hermes terminal
 - generates a 256-bit MCP Bearer token from `/dev/urandom`, stored only as `0600` under persistent data;
 - runs zstd integrity validation before extraction;
 - stops/unmounts an old runtime and removes orphan `rootfs.new.*` stages before creating a new stage;
+- re-scans the extracted tree and rejects Android partition, GPT, and bootloader image payloads on-device;
 - checks the extracted Hermes commit against `a2e19d484cb5591df8dafe667c93345b62d9bf06`;
 - provisions a non-secret DeepSeek `config.yaml` only when absent and preserves user edits on upgrades;
 - extracts into `rootfs.new.<pid>`;
@@ -86,7 +87,7 @@ The Magisk app action button invokes toggle mode. Uninstall removes the active/p
 
 ## Build
 
-The module assembler requires Linux/WSL tools `file`, `rsync`, `sha256sum`, `tar`, `unzip`, `wc`, `zip`, and `zstd`. It requires a verified static ARM64 zstd binary and hash:
+The module assembler requires Linux/WSL tools `file`, `readelf`, `rsync`, `sha256sum`, `tar`, `unzip`, `wc`, `zip`, and `zstd`. It requires a verified static ARM64 zstd binary and hash:
 
 ```bash
 scripts/build-magisk-module.sh \
@@ -97,7 +98,7 @@ scripts/build-magisk-module.sh \
 
 The output ZIP and SHA-256 sidecar are generated under gitignored `artifacts/magisk/`. The assembler rejects a non-ARM64/dynamic decoder, mismatched rootfs/hash, corrupt zstd, missing module files, and partition-image filenames both in the module ZIP and inside the rootfs archive.
 
-Without local Linux/WSL, run the manually triggered GitHub workflow `.github/workflows/build-phone-artifacts.yml`. It has read-only repository permission, pins every GitHub Action and source commit, builds static ARM64 zstd twice and requires identical hashes, builds the Debian rootfs/module, and uploads all binaries plus package/provenance/hash manifests for 14 days. Generated binaries remain outside Git.
+Without local Linux/WSL, run the manually triggered GitHub workflow `.github/workflows/build-phone-artifacts.yml`. It has read-only repository permission, pins every GitHub Action/source commit plus an immutable Ubuntu apt snapshot, builds static ARM64 zstd twice and requires identical hashes with no ELF `INTERP`, builds the Debian rootfs/module, and uploads all binaries plus package/provenance/hash manifests for 14 days. Generated binaries remain outside Git.
 
 ## Remaining real-device gates
 

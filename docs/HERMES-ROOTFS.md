@@ -22,14 +22,15 @@
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
-  mmdebstrap qemu-user-static binfmt-support rsync zstd git ca-certificates
+  arch-test binutils mmdebstrap qemu-user-static binfmt-support \
+  rsync zstd git ca-certificates
 ```
 
 构建命令：
 
 ```bash
 cd /mnt/d/生活问答/Pearl-Agent-ROM
-sudo scripts/build-hermes-rootfs.sh
+sudo bash scripts/build-hermes-rootfs.sh
 ```
 
 可选参数：
@@ -43,9 +44,9 @@ sudo scripts/build-hermes-rootfs.sh
 没有本地 Linux/WSL 时，手动运行 `.github/workflows/build-phone-artifacts.yml`。该 workflow：
 
 1. 只有 `contents: read` 权限；
-2. 固定 checkout/upload action SHA、Hermes commit 和 zstd commit；
-3. 在 Ubuntu 24.04 上构建 rootfs；
-4. 在两个独立目录交叉编译 static ARM64 zstd 并要求 SHA-256 一致；
+2. 固定 checkout/upload action SHA、Hermes commit、zstd commit 和 Ubuntu apt snapshot；
+3. 在 Ubuntu 24.04 runner 上只从固定 snapshot 安装 host toolchain，并保存精确包版本；
+4. 在两个独立目录交叉编译 static ARM64 zstd，要求 SHA-256 一致且 ELF 无 `INTERP`；
 5. 组装 Magisk module，上传 rootfs、module、依赖清单、provenance 和全量哈希；
 6. artifact 保留 14 天，二进制仍不进入 Git。
 

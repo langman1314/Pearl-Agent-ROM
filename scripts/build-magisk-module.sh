@@ -36,7 +36,7 @@ while (($#)); do
   esac
 done
 
-for command_name in file rsync sha256sum tar unzip wc zip zstd; do
+for command_name in file readelf rsync sha256sum tar unzip wc zip zstd; do
   command -v "$command_name" >/dev/null 2>&1 || {
     echo "Missing required command: $command_name" >&2
     exit 1
@@ -69,7 +69,7 @@ rootfs_unpacked_bytes="$(zstd -dc "$ROOTFS" | wc -c | tr -d ' ')"
 }
 rootfs_entries="$work_dir/rootfs.entries"
 zstd -dc "$ROOTFS" | tar -tf - > "$rootfs_entries"
-if grep -Eqi '(^|/)(boot|init_boot|vendor_boot|vbmeta(_system|_vendor)?|super|preloader|efuse)(_[ab])?\.(img|bin)$' "$rootfs_entries"; then
+if grep -Eqi '(^|/)(boot|init_boot|vendor_boot|recovery|dtbo|vbmeta(_system|_vendor)?|super|system|system_ext|vendor|odm|product|mi_ext|preloader|efuse|gpt|lk|abl|xbl[^/]*)(_raw)?(_[ab])?\.(img|bin|elf)$' "$rootfs_entries"; then
   echo "Unsafe partition payload detected inside rootfs archive" >&2
   exit 1
 fi
@@ -87,6 +87,10 @@ printf '%s\n' "$zstd_file_info" | grep -Eqi '(statically linked|static-pie linke
   echo "zstd payload is dynamically linked and cannot run in the Magisk installer" >&2
   exit 1
 }
+if readelf -l "$ZSTD_BINARY" | grep -q 'INTERP'; then
+  echo "zstd payload has a program interpreter and is not self-contained" >&2
+  exit 1
+fi
 
 version="$(awk -F= '$1=="version" {print $2}' "$TEMPLATE/module.prop")"
 version_code="$(awk -F= '$1=="versionCode" {print $2}' "$TEMPLATE/module.prop")"
@@ -130,7 +134,7 @@ for required in module.prop customize.sh post-fs-data.sh service.sh action.sh un
 done
 
 # A Magisk module must not carry Android partition images or flashing scripts.
-if unzip -Z1 "$artifact" | grep -Eqi '(^|/)(boot|vbmeta|super|preloader|efuse)(_[ab])?\.(img|bin)$'; then
+if unzip -Z1 "$artifact" | grep -Eqi '(^|/)(boot|init_boot|vendor_boot|recovery|dtbo|vbmeta(_system|_vendor)?|super|system|system_ext|vendor|odm|product|mi_ext|preloader|efuse|gpt|lk|abl|xbl[^/]*)(_raw)?(_[ab])?\.(img|bin|elf)$'; then
   echo "Unsafe partition payload detected in Magisk module" >&2
   exit 1
 fi

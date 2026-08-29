@@ -25,10 +25,27 @@ case "$action" in
       pearl_log "Rollback requested but no previous rootfs exists"
       exit 1
     fi
-    failed="$STATE_ROOT/rootfs.failed.$(date +%s)"
-    [ -d "$ROOTFS" ] && mv "$ROOTFS" "$failed"
-    mv "$PREVIOUS_ROOTFS" "$ROOTFS"
-    pearl_log "Previous rootfs restored; failed rootfs retained at $failed; runtime remains disabled until explicit enable and reboot"
+    failed=""
+    if [ -d "$ROOTFS" ]; then
+      for old_failed in "$STATE_ROOT"/rootfs.failed.action.*; do
+        [ -d "$old_failed" ] && rm -rf "$old_failed"
+      done
+      failed="$STATE_ROOT/rootfs.failed.action.$(date +%s).$$"
+      if ! mv "$ROOTFS" "$failed"; then
+        pearl_log "Rollback aborted: could not quarantine active rootfs"
+        exit 1
+      fi
+    fi
+    if ! mv "$PREVIOUS_ROOTFS" "$ROOTFS"; then
+      [ -n "$failed" ] && [ -d "$failed" ] && mv "$failed" "$ROOTFS" 2>/dev/null
+      pearl_log "Rollback aborted: could not activate previous rootfs; active rootfs restoration attempted"
+      exit 1
+    fi
+    if [ -n "$failed" ]; then
+      pearl_log "Previous rootfs restored; failed rootfs retained at $failed; runtime remains disabled until explicit enable and reboot"
+    else
+      pearl_log "Previous rootfs restored; no active rootfs required quarantine; runtime remains disabled until explicit enable and reboot"
+    fi
     ;;
   toggle)
     if [ -f "$DISABLED_FILE" ]; then

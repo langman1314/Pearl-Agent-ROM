@@ -62,7 +62,7 @@ require_command() {
   }
 }
 
-for command_name in git mmdebstrap qemu-aarch64-static rsync tar zstd sha256sum; do
+for command_name in arch-test git mmdebstrap qemu-aarch64-static rsync tar zstd sha256sum; do
   require_command "$command_name"
 done
 

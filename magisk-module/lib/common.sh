@@ -144,7 +144,7 @@ mount_chroot() {
   mount_fs_once tmpfs tmpfs "$ROOTFS/dev" -o mode=0755,nosuid || return 1
   mkdir -p "$ROOTFS/dev/pts" "$ROOTFS/dev/shm"
   chmod 1777 "$ROOTFS/dev/shm"
-  mount_fs_once devpts devpts "$ROOTFS/dev/pts" -o mode=0620,ptmxmode=0666,nosuid,noexec || return 1
+  mount_fs_once devpts devpts "$ROOTFS/dev/pts" -o newinstance,mode=0620,ptmxmode=0666,nosuid,noexec || return 1
   rm -f "$ROOTFS/dev/ptmx" "$ROOTFS/dev/fd" "$ROOTFS/dev/stdin" "$ROOTFS/dev/stdout" "$ROOTFS/dev/stderr"
   ln -s pts/ptmx "$ROOTFS/dev/ptmx"
   ln -s /proc/self/fd "$ROOTFS/dev/fd"

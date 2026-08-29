@@ -19,6 +19,7 @@ jobs:
       HERMES_COMMIT: a2e19d484cb5591df8dafe667c93345b62d9bf06
       ZSTD_REPOSITORY: https://github.com/facebook/zstd.git
       ZSTD_COMMIT: f8745da6ff1ad1e7bab384bd1f9d742439278e99
+      UBUNTU_SNAPSHOT: 20260801T000000Z
       SOURCE_DATE_EPOCH: "1748736000"
 
     steps:
@@ -30,13 +31,21 @@ jobs:
       - name: Install pinned-build host tools
         run: |
           set -Eeuo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            ca-certificates file gcc-aarch64-linux-gnu git make mmdebstrap \
-            qemu-user-static rsync unzip zip zstd
+          sudo rm -f /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources
+          printf '%s\n' \
+            'Types: deb' \
+            "URIs: https://snapshot.ubuntu.com/ubuntu/${UBUNTU_SNAPSHOT}/" \
+            'Suites: noble noble-updates noble-security' \
+            'Components: main universe' \
+            'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg' \
+            | sudo tee /etc/apt/sources.list.d/ubuntu-snapshot.sources >/dev/null
+          sudo apt-get -o Acquire::Check-Valid-Until=false update
+          sudo apt-get -o Acquire::Check-Valid-Until=false install -y --no-install-recommends \
+            arch-test binutils ca-certificates file gcc-aarch64-linux-gnu git make \
+            mmdebstrap qemu-user-static rsync unzip zip zstd
           dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' \
-            ca-certificates file gcc-aarch64-linux-gnu git make mmdebstrap \
-            qemu-user-static rsync unzip zip zstd \
+            arch-test binutils ca-certificates file gcc-aarch64-linux-gnu git make \
+            mmdebstrap qemu-user-static rsync unzip zip zstd \
             | sort > host-build-packages.tsv
 
       - name: Fetch exact Hermes source
@@ -120,6 +129,7 @@ jobs:
             echo "hermes_commit=$HERMES_COMMIT"
             echo "zstd_repository=$ZSTD_REPOSITORY"
             echo "zstd_commit=$ZSTD_COMMIT"
+            echo "ubuntu_snapshot=$UBUNTU_SNAPSHOT"
             echo "source_date_epoch=$SOURCE_DATE_EPOCH"
             aarch64-linux-gnu-gcc --version | head -n 1 | sed 's/^/cross_compiler=/'
             qemu-aarch64-static --version | head -n 1 | sed 's/^/qemu=/'
