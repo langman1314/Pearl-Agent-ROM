@@ -25,7 +25,7 @@ Write-Output '[bootstrap] Accepting Android SDK licenses...'
 if ($LASTEXITCODE -ne 0) { throw "sdkmanager --licenses failed with exit code $LASTEXITCODE" }
 
 Write-Output '[bootstrap] Installing Android SDK packages...'
-& $SdkManager "--sdk_root=$SdkRoot" 'platform-tools' 'platforms;android-37' 'build-tools;35.0.0'
+& $SdkManager "--sdk_root=$SdkRoot" 'platform-tools' 'platforms;android-36' 'build-tools;35.0.0'
 if ($LASTEXITCODE -ne 0) { throw "sdkmanager package install failed with exit code $LASTEXITCODE" }
 
 Write-Output '[bootstrap] Running Nexus unit tests and debug build...'
