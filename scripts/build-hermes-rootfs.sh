@@ -65,6 +65,11 @@ require_command() {
 for command_name in arch-test git mmdebstrap qemu-aarch64-static rsync tar zstd sha256sum; do
   require_command "$command_name"
 done
+readonly DEBIAN_ARCHIVE_KEYRING="/usr/share/keyrings/debian-archive-keyring.gpg"
+[[ -f "$DEBIAN_ARCHIVE_KEYRING" ]] || {
+  echo "Missing Debian archive keyring: $DEBIAN_ARCHIVE_KEYRING" >&2
+  exit 1
+}
 
 if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
   echo "Run as root so mmdebstrap and chroot can preserve ownership." >&2
@@ -114,6 +119,7 @@ mmdebstrap \
   --variant=minbase \
   --architectures=arm64 \
   --components=main \
+  --keyring="$DEBIAN_ARCHIVE_KEYRING" \
   --aptopt='Acquire::Check-Valid-Until "false"' \
   --aptopt='Acquire::Languages "none"' \
   --include='bash,ca-certificates,curl,git,python3,python3-venv,python3-dev,python3-pip,build-essential,pkg-config,libffi-dev,libssl-dev,libsqlite3-dev,libyaml-dev,libmagic1,libxml2-dev,libxslt1-dev,zlib1g-dev,libjpeg62-turbo-dev,procps,iproute2,iputils-ping,dnsutils,openssh-client,rsync,jq,tzdata,locales' \

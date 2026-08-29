@@ -22,8 +22,8 @@
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
-  arch-test binutils mmdebstrap qemu-user-static binfmt-support \
-  rsync zstd git ca-certificates
+  arch-test binutils debian-archive-keyring mmdebstrap qemu-user-static \
+  binfmt-support rsync zstd git ca-certificates
 ```
 
 构建命令：
