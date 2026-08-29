@@ -14,6 +14,8 @@ $env:JAVA_HOME = Split-Path -Parent (Split-Path -Parent $JavaExe.FullName)
 $env:ANDROID_HOME = $SdkRoot
 $env:ANDROID_SDK_ROOT = $SdkRoot
 $env:Path = "$(Join-Path $env:JAVA_HOME 'bin');$env:Path"
+$windowsRootTrust = '-Djavax.net.ssl.trustStore=NONE -Djavax.net.ssl.trustStoreType=Windows-ROOT'
+$env:GRADLE_OPTS = "$windowsRootTrust $env:GRADLE_OPTS".Trim()
 
 $SdkManager = Join-Path $SdkRoot 'cmdline-tools\latest\bin\sdkmanager.bat'
 if (-not (Test-Path -LiteralPath $SdkManager)) {

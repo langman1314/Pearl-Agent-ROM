@@ -13,3 +13,5 @@
 ```
 
 `.tools/`、Gradle 输出和 APK 均由 `.gitignore` 排除。最终 APK 的 SHA-256 单独写入 `manifests/`。
+
+便携 JDK 的 Gradle 进程使用 `Windows-ROOT` trust store，以复用 Windows 已验证的企业/代理根证书；不会关闭 TLS 或采用 trust-all。
