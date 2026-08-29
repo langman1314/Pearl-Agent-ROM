@@ -76,3 +76,10 @@
 ## Unverified
 
 - 设置页覆盖范围、MCP transport 细节，本轮没有为这次修文重新逐项回到源码核验。
+
+## Pearl 加固状态
+
+- XiaoAi `507013003` 配置已内置为断网精确回退。
+- XiaoAi 最近版本配置只用于诊断，不再安装 Hook。
+- XiaoAi ResponseTarget 等待上限为 8 秒；超时清理注入 turn 并放行原生助手。
+- 首次设置默认注册 `http://127.0.0.1:51338/mcp` 的 Hermes MCP server。

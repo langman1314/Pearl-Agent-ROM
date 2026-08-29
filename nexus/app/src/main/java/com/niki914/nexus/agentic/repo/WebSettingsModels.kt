@@ -25,7 +25,11 @@ sealed interface WebSettingsResult {
 enum class WebSettingsSource {
     Cache,
     Network,
+    Bundled,
 }
+
+fun WebSettingsResult.canInstallHooks(): Boolean =
+    this is WebSettingsResult.Success && !isFallbackVersion && settings.config != null
 
 enum class WebSettingsFailureReason {
     NetworkUnavailable,

@@ -7,6 +7,7 @@ import com.niki914.nexus.agentic.mod.feat.hyper.XiaoaiChatHook
 import com.niki914.nexus.agentic.mod.feat.oppo.BreenoChatHook
 import com.niki914.nexus.agentic.repo.WebSettingsFailureReason
 import com.niki914.nexus.agentic.repo.WebSettingsResult
+import com.niki914.nexus.agentic.repo.canInstallHooks
 import com.niki914.nexus.agentic.repo.XIpcDomainSettingsStore
 import com.niki914.nexus.agentic.repo.XRepo
 import com.niki914.nexus.agentic.runtime.client.AgentRuntimeClient
@@ -74,8 +75,7 @@ class Entrance : IXposed() {
                 }
             }
 
-            val configObj = webSettingsResult.configOrNull()
-            if (configObj != null) {
+            if (webSettingsResult.canInstallHooks()) {
                 onSettingsFetched(params, targetPkg, client)
             }
         }

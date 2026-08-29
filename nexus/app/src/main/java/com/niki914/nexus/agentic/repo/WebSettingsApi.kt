@@ -114,15 +114,49 @@ class WebSettingsApi internal constructor(
                 json = exactResult.json,
                 requestedVersionCode = target.versionCode,
                 resolvedVersionCode = target.versionCode,
+                source = WebSettingsSource.Network,
                 isFallbackVersion = false,
             )
 
-            ConfigFetchResult.NotFound -> fetchNearestConfig(context, target)
-            is ConfigFetchResult.Failed -> WebSettingsResult.RequestFailed(
-                reason = exactResult.reason,
-                cause = exactResult.cause,
-            )
+            ConfigFetchResult.NotFound -> loadBundledExact(context, target)
+                ?: if (target.packageName == HostApp.XiaoAi.packageName) {
+                    WebSettingsResult.RequestFailed(WebSettingsFailureReason.UnsupportedVersion)
+                } else {
+                    fetchNearestConfig(context, target)
+                }
+
+            is ConfigFetchResult.Failed -> loadBundledExact(context, target)
+                ?: WebSettingsResult.RequestFailed(
+                    reason = exactResult.reason,
+                    cause = exactResult.cause,
+                )
         }
+    }
+
+    private suspend fun loadBundledExact(
+        context: Context,
+        target: WebSettingsTarget,
+    ): WebSettingsResult? {
+        val json = withContext(Dispatchers.IO) {
+            runCatching {
+                val assetContext = if (context.packageName == NEXUS_PACKAGE_NAME) {
+                    context
+                } else {
+                    context.createPackageContext(NEXUS_PACKAGE_NAME, Context.CONTEXT_IGNORE_SECURITY)
+                }
+                val assetPath = "$BUNDLED_CONFIG_ROOT/${target.packageName}/${target.versionCode}/config.json"
+                assetContext.assets.open(assetPath).bufferedReader().use { it.readText() }
+            }.getOrNull()
+        } ?: return null
+
+        return persistSuccess(
+            context = context,
+            json = json,
+            requestedVersionCode = target.versionCode,
+            resolvedVersionCode = target.versionCode,
+            source = WebSettingsSource.Bundled,
+            isFallbackVersion = false,
+        )
     }
 
     private suspend fun fetchNearestConfig(
@@ -148,6 +182,7 @@ class WebSettingsApi internal constructor(
                 json = fallbackResult.json,
                 requestedVersionCode = target.versionCode,
                 resolvedVersionCode = nearestVersionCode,
+                source = WebSettingsSource.Network,
                 isFallbackVersion = true,
             )
 
@@ -165,6 +200,7 @@ class WebSettingsApi internal constructor(
         json: String,
         requestedVersionCode: Long,
         resolvedVersionCode: Long,
+        source: WebSettingsSource,
         isFallbackVersion: Boolean,
     ): WebSettingsResult {
         val rawSettings = WebSettings(parseJsonObject(json))
@@ -187,7 +223,7 @@ class WebSettingsApi internal constructor(
             settings = settings,
             requestedVersionCode = requestedVersionCode,
             resolvedVersionCode = resolvedVersionCode,
-            source = WebSettingsSource.Network,
+            source = source,
             isFallbackVersion = isFallbackVersion,
         )
     }
@@ -335,6 +371,8 @@ class WebSettingsApi internal constructor(
 
     private companion object {
         private const val REMOTE_BASE_URL = "https://gitee.com/niki914/nexus-res/raw/main/"
+        private const val BUNDLED_CONFIG_ROOT = "hooks"
+        private const val NEXUS_PACKAGE_NAME = "com.niki914.nexus.agentic"
         private const val HTTP_NOT_FOUND = 404
         private val httpClient = OkHttpClient()
     }

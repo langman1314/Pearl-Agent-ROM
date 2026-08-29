@@ -10,8 +10,10 @@ import com.niki914.nexus.agentic.mod.feat.hyper.subhooks.RenderTextStreamCardHoo
 import com.niki914.nexus.agentic.runtime.client.AssistantTextSource
 import com.niki914.nexus.xposed.api.xevent.XEvent
 import de.robv.android.xposed.callbacks.XC_LoadPackage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.withTimeoutOrNull
 
 class XiaoaiChatHook(
     scope: CoroutineScope,
@@ -64,7 +66,7 @@ class XiaoaiChatHook(
         CaptureInputHook(onInput = onInput).onHook(lpparam)
     }
 
-    // 覆盖基类：渲染前需等待宿主 UI 卡片就绪（TODO 死等风险：若 Hook 永不触发则挂死）
+    // 渲染前等待宿主 UI 卡片；超时必须 fail-open，避免 Hook 失配时挂死或吞掉原生回答。
     override suspend fun dispatchQueryToLLM(turnId: Long, roomId: String, query: String) {
         targetReady.cancel()
         targetReady = CompletableDeferred()
@@ -73,11 +75,18 @@ class XiaoaiChatHook(
         XEvent.withContext(eventContext) {
             try {
                 textSource.submit(query).collect { frame ->
-                    targetReady.await()
+                    if (!awaitResponseTarget()) throw ResponseTargetTimeoutException()
                     renderStreamCard(turnId, roomId, frame.text, frame.isFirst, frame.isFinal)
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: ResponseTargetTimeoutException) {
+                failOpenToNativeAssistant()
             } catch (e: Exception) {
-                targetReady.await()
+                if (!awaitResponseTarget()) {
+                    failOpenToNativeAssistant()
+                    return@withContext
+                }
                 renderStreamCard(
                     turnId, roomId,
                     e.message ?: "Service unavailable",
@@ -86,6 +95,19 @@ class XiaoaiChatHook(
             }
         }
     }
+
+    private suspend fun awaitResponseTarget(): Boolean =
+        withTimeoutOrNull(RESPONSE_TARGET_TIMEOUT_MS) {
+            targetReady.await()
+            true
+        } == true
+
+    private suspend fun failOpenToNativeAssistant() {
+        ActiveTurnStore.clear()
+        textSource.cancel()
+    }
+
+    private class ResponseTargetTimeoutException : IllegalStateException("XiaoAi response target timed out")
 
     override suspend fun renderStreamCard(
         turnId: Long,
@@ -106,5 +128,9 @@ class XiaoaiChatHook(
             isFirst = isFirst,
             isFinal = isFinal
         )
+    }
+
+    private companion object {
+        const val RESPONSE_TARGET_TIMEOUT_MS = 8_000L
     }
 }

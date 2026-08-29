@@ -150,6 +150,19 @@ object XRepo {
                 StoreDescriptorRegistry.RULES_EXECUTION_ID,
                 RuleSettingsCodec.encodeExecutionRules(LocalSettingsDefaults.defaultExecutionRules),
             )
+            writeJsonLocked(
+                context,
+                StoreDescriptorRegistry.TOOLS_MCP_SERVERS_ID,
+                McpSettingsCodec.encodeServers(
+                    listOf(
+                        McpServer(
+                            name = "Hermes",
+                            url = "http://127.0.0.1:51338/mcp",
+                            enabled = true,
+                        )
+                    )
+                ),
+            )
             true
         }
     }

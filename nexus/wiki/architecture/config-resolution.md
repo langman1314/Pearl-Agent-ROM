@@ -204,3 +204,7 @@ interface StoreClient {
 - `ConfigPersistence.kt`
 - `IpcResult.kt`
 - `IpcJsonMutator.kt`
+
+## Pearl / XiaoAi 精确配置策略
+
+Pearl 定制版在网络精确配置失败时，会从 Nexus APK 的 `assets/hooks/<package>/<versionCode>/config.json` 读取同版本配置。XiaoAi 仅接受精确版本；`nearest version` 仍可用于 Breeno，但 XiaoAi 回退结果不会安装 Hook。`WebSettingsResult.canInstallHooks()` 是宿主安装的统一 fail-closed 判定。
