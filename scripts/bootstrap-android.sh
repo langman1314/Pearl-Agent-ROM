@@ -27,7 +27,7 @@ fi
 export JAVA_HOME="$(cygpath -w "$(dirname "$(dirname "$JAVA_EXE")")")"
 export PATH="$(cygpath -u "$JAVA_HOME")/bin:$PATH"
 
-if [[ ! -x "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]]; then
+if [[ ! -f "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager.bat" ]]; then
   echo '[bootstrap] Downloading Android command-line tools 13114758...'
   curl --fail --location --retry 3 --ssl-no-revoke \
     'https://dl.google.com/android/repository/commandlinetools-win-13114758_latest.zip' \
@@ -38,20 +38,8 @@ if [[ ! -x "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]]; then
   cp -a "$TOOLS/cmdline-tools-unpack/cmdline-tools/." "$SDK_ROOT/cmdline-tools/latest/"
 fi
 
-export ANDROID_HOME="$(cygpath -w "$SDK_ROOT")"
-export ANDROID_SDK_ROOT="$ANDROID_HOME"
-SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-
-set +o pipefail
-yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null
-set -o pipefail
-"$SDKMANAGER" --sdk_root="$SDK_ROOT" \
-  'platform-tools' \
-  'platforms;android-37' \
-  'build-tools;35.0.0'
-
-cd "$ROOT/nexus"
-./gradlew --no-daemon testDebugUnitTest assembleDebug
+powershell.exe -NoProfile -ExecutionPolicy Bypass \
+  -File "$(cygpath -w "$ROOT/scripts/build-nexus.ps1")"
 
 echo '[bootstrap] Build completed.'
 find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print
