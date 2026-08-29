@@ -1,4 +1,4 @@
-﻿# Pearl Agent ROM
+# Pearl Agent ROM
 
 Redmi Note 12T Pro (`pearl`) 的常驻 Android Agent 定制工程。
 
@@ -13,12 +13,14 @@ Redmi Note 12T Pro (`pearl`) 的常驻 Android Agent 定制工程。
 - Nexus 通过本地 HTTP MCP 把复杂任务委派给 Hermes；
 - 原厂回滚、单槽测试和救砖路径。
 
-## 原始 ROM
+## 不可变上游 ROM 输入
 
 - 文件：`D:\EdgDownloads\pearl_Note12TPro_OS3.0.310.0.WAACNXM_16.0.zip`
-- 版本：`OS3.0.310.0.WAACNXM` / Android 16
+- 标称版本：`OS3.0.310.0.WAACNXM` / Android 16
 - SHA-256：`b684924f00fe5663f6438ddc482efc6a556f6af3475f94613b95f16dc0cba3c6`
 - 大小：`5,942,636,095` bytes
+- 身份：第三方 `mytiantian` 混合移植包，不是 Xiaomi 官方 fastboot ROM；AVB metadata 混合 Android 15 system 与 Android 12 vendor/boot，详见 `docs/AVB-CHAIN.md`。
+- 原包脚本会刷写 `preloader1/2`，本工程严禁运行或复用该脚本；必须另备官方 pearl 救砖包。
 
 ## 安全边界
 
