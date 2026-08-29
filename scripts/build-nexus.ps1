@@ -31,8 +31,13 @@ Write-Output '[bootstrap] Installing Android SDK packages...'
 if ($LASTEXITCODE -ne 0) { throw "sdkmanager package install failed with exit code $LASTEXITCODE" }
 
 Write-Output '[bootstrap] Running Nexus unit tests and debug build...'
-& (Join-Path $Root 'nexus\gradlew.bat') --no-daemon testDebugUnitTest assembleDebug
-if ($LASTEXITCODE -ne 0) { throw "Gradle failed with exit code $LASTEXITCODE" }
+Push-Location (Join-Path $Root 'nexus')
+try {
+    & '.\gradlew.bat' --no-daemon testDebugUnitTest assembleDebug
+    if ($LASTEXITCODE -ne 0) { throw "Gradle failed with exit code $LASTEXITCODE" }
+} finally {
+    Pop-Location
+}
 
 Write-Output '[bootstrap] Build completed.'
 Get-ChildItem -LiteralPath (Join-Path $Root 'nexus\app\build\outputs\apk\debug') -Filter *.apk -File |
