@@ -93,5 +93,5 @@ tracker 是社区维护的官方 OTA/Fastboot URL 索引，不是 Xiaomi 的签�
 
 - 在真机运行已完成的 read-only preflight collector，取得实际 identity/slot/lock/partition-size evidence；
 - 通过另行审核的 root/recovery 只读流程导出并双重备份当前 boot/vbmeta，完成 rollback/recovery 演练；
-- 完成当前 HEAD phone artifact CI、manifest 下载复验，以及 Magisk/Vector Android 15 真机兼容性；
+- phone artifact CI 与下载 manifest 复验已完成；仍需 Magisk 30.7/Vector 2.2 在官方 Android 15 pearl 真机兼容性验证；
 - 在上述条件满足后才允许从 fresh official boot 生成 patched boot；生成不代表允许刷入。

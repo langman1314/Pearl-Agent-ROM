@@ -12,7 +12,7 @@ Required before connecting the phone:
 - [x] complete official boot/vbmeta/logical AVB graph verified;
 - [x] official XiaoAi APK identity/signatures/CRC and exact Dex targets audited;
 - [x] Nexus release built from source, all unit tests passed, release signer fixed;
-- [ ] Hermes rootfs, static ARM64 zstd and Magisk module CI artifact fully green and downloaded manifest independently rechecked;
+- [x] Hermes rootfs, static ARM64 zstd and Magisk module CI artifact fully green and downloaded manifest independently rechecked (`run 33319865389`);
 - [ ] external backup of Nexus release key confirmed;
 - [ ] approved Magisk 30.7 and Vector 2.2 install artifacts copied to the controlled release directory with hashes.
 

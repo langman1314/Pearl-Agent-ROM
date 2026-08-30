@@ -1,0 +1,11 @@
+repository=langman1314/Pearl-Agent-ROM
+repository_commit=e0dca9501ee6865b58712d1f7920edd9511ac3ad
+workflow_run_id=33319865389
+hermes_repository=https://github.com/NousResearch/hermes-agent.git
+hermes_commit=a2e19d484cb5591df8dafe667c93345b62d9bf06
+zstd_repository=https://github.com/facebook/zstd.git
+zstd_commit=f8745da6ff1ad1e7bab384bd1f9d742439278e99
+ubuntu_snapshot=20260801T000000Z
+source_date_epoch=1748736000
+cross_compiler=aarch64-linux-gnu-gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+qemu=qemu-aarch64 version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.17)
