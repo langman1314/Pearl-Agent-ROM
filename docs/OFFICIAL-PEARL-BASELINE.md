@@ -61,6 +61,22 @@ tracker 是社区维护的官方 OTA/Fastboot URL 索引，不是 Xiaomi 的签�
 
 列出 preloader/efuse hash 只为了识别和拒绝误刷，不表示它们进入项目 installer。
 
+## Sparse super 与 AVB chain 门禁
+
+官方 `super.img` 是 Android sparse v1 image。外部 `lpunpack.py` 的 sparse FILL 实现被实测证明会把 non-zero fill pattern 错写成零洞；这只改变本包的 `vendor_a.img` 并导致 vendor hashtree mismatch。项目没有把该 mismatch 归因于 ROM，而是新增 `scripts/unsparse-android-image.py`，严格处理 RAW/FILL/DONT_CARE/CRC32、声明大小、总 blocks/chunks、EOF、fsync 和原子发布，并以 3 个回归测试覆盖缺陷。
+
+严格展开的 raw super SHA-256：
+
+`038483b5afccb91c843cd3143380b332750b26c0130bfbb3eb87aa02d088a1f0`
+
+之后从 raw image 的 LP metadata 提取 8 个 populated slot-a logical partitions。严格 manifest SHA-256：
+
+`3e586710cae229c7bd5d04d605ceb81bd1393732768fc08799ba69478b4e454d`
+
+固定 AOSP avbtool commit `c5066a96caa7bf4150c0a8cc8cc14ab81733fdc7` 在 portable MSYS2/POSIX 下执行 `verify_image --follow_chain_partitions`，完整通过 15 项：top-level vbmeta；chained boot/footer/hash；vbmeta_system 与 product/system/system_ext hashtrees；vbmeta_vendor 与 vendor hashtree；dtbo/vendor_boot hashes；mi_ext/odm/odm_dlkm/vendor_dlkm hashtrees。顶层和 child vbmeta 使用同一 public-key SHA-1 `b2a02f1e56e366d727a1a8e089762fe0b91bbc84`，顶层 flags 为 `0`。
+
+因此官方包的下载 provenance、archive 完整性与完整 AVB chain 三层门禁均已通过；真机设备身份、rollback 和安装门禁仍未通过，状态继续 **NO FLASH**。
+
 ## 使用边界
 
 1. 不直接运行包内 `flash_all*.bat/.sh`；
@@ -71,11 +87,9 @@ tracker 是社区维护的官方 OTA/Fastboot URL 索引，不是 Xiaomi 的签�
 6. Nexus/Hermes payload 继续只部署到 `/data`，不改 AVB 保护的 logical partition；
 7. 在真机导出当前槽镜像并完成比对前仍然 **NO FLASH**。
 
-## 下一步门禁
+## 剩余门禁
 
-- 安全列出并提取 TGZ；
-- 记录包内设备/版本 metadata 与每个关键 image SHA-256；
-- 审计官方 flash scripts，生成项目自己的保守恢复流程而不是复用脚本；
-- 验证官方 AVB chain 和 stock boot；
-- 比较第三方输入包与官方基线，明确哪些文件可以完全丢弃；
-- 基于官方基线重新完成 recovery/rollback 设计。
+- 把已经完成的官方 flash-script 风险审计转化为项目自己的保守 installer/recovery 命令，绝不复用原脚本；
+- 完成第三方输入包与官方基线的弃用清单，确保 final payload 不再依赖第三方 logical partitions；
+- 在真机只读导出当前槽 identity/boot/vbmeta，完成 slot/rollback/recovery 演练；
+- 在上述条件满足后才允许生成或刷入 patched boot。

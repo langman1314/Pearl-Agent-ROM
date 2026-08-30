@@ -79,7 +79,7 @@
 
 ## Pearl 加固状态
 
-- XiaoAi `507013003` 与 pearl 实际 APK `507012002` 都有断网精确配置；`507012002` 的六个 owner/method surface 已对 exact APK 做 Dex 静态核验，response dispatcher 从旧版 `cb0.eb` 变为语义匹配的 `cb0.db`，仍需真机验收。
+- XiaoAi `507013003`、官方 pearl 恢复基线 `507009011` 与原第三方输入 `507012002` 都有断网精确配置；后两者分别对 exact APK 完成 Dex 静态核验。官方 `507009011` 使用 `qb0.ua.z0` response dispatcher、`qb0.f9.onProcessOp(v90.l)` TTS playback 与 `fa0.ac.y1(JSONObject)` RN card target，仍需真机验收。
 - XiaoAi 非精确/最近版本配置只用于诊断，不安装 Hook。
 - XiaoAi ResponseTarget 等待上限为 8 秒；超时清理注入 turn 并放行原生助手。
 - 首次设置默认注册 `http://127.0.0.1:51338/mcp` 的 Hermes MCP server。
