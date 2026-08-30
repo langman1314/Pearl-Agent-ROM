@@ -16,6 +16,7 @@ readonly SOURCE_DATE_EPOCH="1736770292"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
 OUTPUT_DIR="$REPO_ROOT/artifacts/tooling/erofs-audit"
+COMPAT_PATCH="$REPO_ROOT/scripts/patches/erofs-extract-mingw-modern.patch"
 
 usage() {
   cat <<'EOF'
@@ -35,7 +36,7 @@ while (($#)); do
 done
 
 for command_name in 7z curl diff file git i686-w64-mingw32-g++-posix \
-  i686-w64-mingw32-objdump make sed sha256sum tar; do
+  i686-w64-mingw32-objdump make patch sed sha256sum tar; do
   command -v "$command_name" >/dev/null 2>&1 || {
     echo "Missing required command: $command_name" >&2
     exit 1
@@ -82,6 +83,8 @@ for relative in "${source_files[@]}"; do
       exit 1
     }
 done
+patch --batch --forward -d "$release_source" -p1 < "$COMPAT_PATCH"
+
 for archive in liberofs_lib_static.a libdeflate.a libzstd_static.lib liblz4_static.lib; do
   test -s "$release_source/lib/$archive" || {
     echo "Release is missing static library: $archive" >&2
@@ -109,7 +112,7 @@ build_once() {
 
   output="$tree/extract.erofs.exe"
   i686-w64-mingw32-g++-posix \
-    -std=gnu++17 -O2 -DNDEBUG -static -static-libgcc -static-libstdc++ \
+    -std=gnu++14 -O2 -DNDEBUG -static -static-libgcc -static-libstdc++ \
     -D_WIN32_WINNT=0x0600 -DWINVER=0x0600 \
     -ffile-prefix-map="$work_dir"=/usr/src/pearl-erofs-audit \
     -fdebug-prefix-map="$work_dir"=/usr/src/pearl-erofs-audit \

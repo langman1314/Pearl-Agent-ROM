@@ -1,0 +1,88 @@
+--- a/CaseSensitiveInfo.h
++++ b/CaseSensitiveInfo.h
+@@ -115,12 +115,13 @@
+ #include <lmcons.h>
+ #include <fileapi.h>
+ 
++#ifndef FILE_CS_FLAG_CASE_SENSITIVE_DIR
+ typedef struct _FILE_CASE_SENSITIVE_INFO {
+     ULONG Flags;
+ } FILE_CASE_SENSITIVE_INFO, *PFILE_CASE_SENSITIVE_INFO;
+ 
+ #define FILE_CS_FLAG_CASE_SENSITIVE_DIR 0x00000001
+-#define FileCaseSensitiveInfo 71 // This value is typically 71
++#endif
+ 
+ static char __win_strerror_buf[64 * 1024 - 1];
+ 
+@@ -129,9 +130,9 @@
+  *@param winerr
+ */
+ static const char *win_strerror(DWORD winerr) {
+-    if (!FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL,
+-                       winerr, MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US),
+-                       (LPWSTR)__win_strerror_buf, sizeof(__win_strerror_buf), NULL)) {
++    if (!FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, NULL,
++                        winerr, MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US),
++                        __win_strerror_buf, sizeof(__win_strerror_buf), NULL)) {
+ #ifndef NDEBUG
+         LOGE("FormatMessage for WinError %ld failed (WinError %ld)", winerr, GetLastError());
+ #endif
+@@ -175,8 +176,8 @@
+         ret = -1;
+ 
+         // owner and group info are required for the AccessCheck below
+-        if ((winerr = GetNamedSecurityInfo((LPCWSTR)path, SE_FILE_OBJECT,
+-                                           OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION |
++        if ((winerr = GetNamedSecurityInfoA(path, SE_FILE_OBJECT,
++                                            OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION |
+                                            DACL_SECURITY_INFORMATION, NULL, NULL, &oldDacl, NULL, (void **) &sd))) {
+             SetLastError(winerr);
+ 
+@@ -186,7 +187,7 @@
+             break;
+         }
+ 
+-        BuildExplicitAccessWithName(&ea, (LPWSTR)userBuff, access, GRANT_ACCESS, SUB_CONTAINERS_AND_OBJECTS_INHERIT);
++        BuildExplicitAccessWithNameA(&ea, userBuff, access, GRANT_ACCESS, SUB_CONTAINERS_AND_OBJECTS_INHERIT);
+ 
+         // next, check if our process already have the requested permission
+         if (!AccessCheck(sd, hToken, access, &_mapping, &_privs, &_priv_size, &_granted, &status)) {
+@@ -201,7 +202,7 @@
+         }  // already has the permission, skip
+         // merge with the old DACL
+ 
+-        if ((winerr = SetEntriesInAcl(1, &ea, oldDacl, &newDacl))) {
++        if ((winerr = SetEntriesInAclA(1, &ea, oldDacl, &newDacl))) {
+             SetLastError(winerr);
+ 
+ #ifndef NDEBUG
+@@ -211,8 +212,8 @@
+             break;
+         }
+ 
+-        if ((winerr = SetNamedSecurityInfo((LPWSTR)pathBuff, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, NULL, NULL, newDacl,
+-                                           NULL))) {
++        if ((winerr = SetNamedSecurityInfoA(pathBuff, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, NULL, NULL, newDacl,
++                                            NULL))) {
+             SetLastError(winerr);
+ 
+ #ifndef NDEBUG
+@@ -241,7 +242,7 @@
+ __attribute__((constructor)) static void __init_creds(void) {
+     DWORD dw = sizeof(userBuff);
+ 
+-    if (!GetUserName((LPWSTR)userBuff, &dw)) {
++    if (!GetUserNameA(userBuff, &dw)) {
+         LOGE("GetUserName failed: %s", win_strerror(GetLastError()));
+ 
+         assert(0);
+@@ -286,7 +287,7 @@
+     HANDLE h;
+     int fd;
+ 
+-    if ((h = CreateFile((LPCWSTR)path, access, share_mode, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL)) ==
++    if ((h = CreateFileA(path, access, share_mode, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL)) ==
+         INVALID_HANDLE_VALUE)
+         return -1;
+ 

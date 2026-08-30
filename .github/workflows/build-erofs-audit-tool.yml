@@ -37,10 +37,10 @@ jobs:
           sudo apt-get -o Acquire::Check-Valid-Until=false update
           sudo apt-get -o Acquire::Check-Valid-Until=false install -y --no-install-recommends \
             binutils-mingw-w64-i686 ca-certificates curl diffutils file git \
-            g++-mingw-w64-i686-posix make p7zip-full sed tar
+            g++-mingw-w64-i686-posix make p7zip-full patch sed tar
           dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' \
             binutils-mingw-w64-i686 ca-certificates curl diffutils file git \
-            g++-mingw-w64-i686-posix make p7zip-full sed tar \
+            g++-mingw-w64-i686-posix make p7zip-full patch sed tar \
             | sort > host-build-packages.tsv
 
       - name: Build source-verified extractor twice
