@@ -18,9 +18,9 @@
 
 APK 已通过 Android build-tools 37 `apksigner verify --verbose --print-certs`。官方 APK、源码 checkout 和审计解包文件只放在被 Git 忽略的 `.tools/` / `artifacts/`，不提交二进制。
 
-### patched boot 归因
+### 历史 patched boot 归因（拒绝作为 release）
 
-patched boot ramdisk 的 `.backup/.magisk` 内容：
+历史实验镜像 ramdisk 的 `.backup/.magisk` 内容：
 
 ```text
 KEEPVERITY=true
@@ -28,25 +28,18 @@ RECOVERYMODE=false
 SHA1=2996ceec04554b151dd64c1bd6dfc6ba3ec0f7b8
 ```
 
-其中 SHA-1 同时精确匹配：
+该 SHA-1 已重新证明与官方 `OS3.0.3.0.VLHCNXM/images/boot.img` 完整文件精确匹配；官方 boot SHA-256 为 `8526d0ff63b6606f4ccda6381f61921e6a56c3bcdd7fa0ace05578863f9a6f82`。ramdisk 内二进制自报 `30.7:MAGISK:R`，且逐字节 provenance 为：
 
-- `D:\生活问答\rom-extract\images\boot.img`；
-- `D:\生活问答\magisk-patch\boot.img`。
-
-ramdisk 内二进制自报 `30.7:MAGISK:R`。逐字节 provenance：
-
-| payload | patched boot SHA-256 | 官方 v30.7 APK SHA-256 | 结果 |
+| payload | historical patched boot SHA-256 | 官方 v30.7 APK payload | 结果 |
 |---|---|---|---|
 | arm64 `magisk` | `2d8419018dda41f7d9aca94c0ca8f926f3b8447ca5cf7fb71faeb8d05e29694e` | 相同 | 精确匹配 |
 | arm64 `magiskinit` / boot `init` | `383670a7ba3a6a4b79e5f3467e1da4b66a5df66a9b356ab9f70916854dd6b468` | 相同 | 精确匹配 |
 
-因此 patched boot 的输入和 Magisk payload 来源均已确定为 stock boot + 官方 Magisk 30.7 Release，而不是未知 Magisk fork。
-
-这不改变 AVB 结论：patched boot 的 flags=3 未重签且 boot hash descriptor 不匹配，仍是 **NO FLASH**。
+这只证明历史实验的输入字节和 Magisk payload 来源，不批准其过程或产物。它在官方 baseline/process gate 建立前生成，flags=3 未重签且 boot hash descriptor 不匹配，也未经过目标设备 slot/rollback 验收，因此永久 **NO FLASH**。最终镜像必须从 fresh hash-checked official boot 重新生成。
 
 ## Vector 2.2（维护中的 LSPosed 后继）
 
-旧 `LSPosed/LSPosed` 不作为 Android 16 新部署基线。当前选择维护中的 JingMatrix Vector：它是 Zygisk ART hook framework，兼容 legacy Xposed API，源码明确声明 Android 8.1 到 Android 17，并包含 Android 16 专用 workaround / hook fallback。
+旧 `LSPosed/LSPosed` 不作为新部署基线。当前候选是维护中的 JingMatrix Vector：它是 Zygisk ART hook framework，兼容 legacy Xposed API，源码声明 Android 8.1 到 Android 17。最终目标已固定为官方 Android 15；宽版本声明不能代替 pearl/Android 15 真机验证。
 
 ### 固定版本
 
