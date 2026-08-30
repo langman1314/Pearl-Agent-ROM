@@ -73,6 +73,10 @@ if grep -Eqi '(^|/)(boot|init_boot|vendor_boot|recovery|dtbo|vbmeta(_system|_ven
   echo "Unsafe partition payload detected inside rootfs archive" >&2
   exit 1
 fi
+if grep -Eqi '(^|/)(flash_all[^/]*|flash[^/]*preloader[^/]*|fastboot[^/]*)\.(bat|cmd|sh|py)$' "$rootfs_entries"; then
+  echo "Unsafe firmware flashing script detected inside rootfs archive" >&2
+  exit 1
+fi
 actual_zstd_hash="$(sha256sum "$ZSTD_BINARY" | awk '{print $1}')"
 [[ "$actual_zstd_hash" == "${ZSTD_SHA256,,}" ]] || {
   echo "zstd SHA-256 mismatch: got $actual_zstd_hash" >&2
@@ -136,6 +140,10 @@ done
 # A Magisk module must not carry Android partition images or flashing scripts.
 if unzip -Z1 "$artifact" | grep -Eqi '(^|/)(boot|init_boot|vendor_boot|recovery|dtbo|vbmeta(_system|_vendor)?|super|system|system_ext|vendor|odm|product|mi_ext|preloader|efuse|gpt|lk|abl|xbl[^/]*)(_raw)?(_[ab])?\.(img|bin|elf)$'; then
   echo "Unsafe partition payload detected in Magisk module" >&2
+  exit 1
+fi
+if unzip -Z1 "$artifact" | grep -Eqi '(^|/)(flash_all[^/]*|flash[^/]*preloader[^/]*|fastboot[^/]*)\.(bat|cmd|sh|py)$'; then
+  echo "Unsafe firmware flashing script detected in Magisk module" >&2
   exit 1
 fi
 
