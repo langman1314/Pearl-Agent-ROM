@@ -9,7 +9,8 @@ readonly DEBIAN_SUITE="bookworm"
 readonly DEBIAN_SNAPSHOT="20250601T000000Z"
 readonly SOURCE_DATE_EPOCH="1748736000"
 readonly UV_VERSION="0.8.11"
-readonly UV_WHEEL_URL="https://files.pythonhosted.org/packages/69/04/7ff94b68c33b93e89ec9920724b2a6d3992051584afd3410bf2604d2b93c/uv-0.8.11-py3-none-manylinux_2_28_aarch64.whl"
+readonly UV_WHEEL_FILENAME="uv-0.8.11-py3-none-manylinux_2_28_aarch64.whl"
+readonly UV_WHEEL_URL="https://files.pythonhosted.org/packages/69/04/7ff94b68c33b93e89ec9920724b2a6d3992051584afd3410bf2604d2b93c/$UV_WHEEL_FILENAME"
 readonly UV_WHEEL_SHA256="0a7fcbe71cc5402b7c3d4c381f9b970a455d8ccc2a43ee2ce5ac2b617ec0534c"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -101,7 +102,7 @@ work_dir="$(mktemp -d -t pearl-rootfs.XXXXXXXX)"
 rootfs="$work_dir/rootfs"
 artifact_base="pearl-hermes-bookworm-arm64-${EXPECTED_HERMES_COMMIT:0:12}"
 artifact="$OUTPUT_DIR/$artifact_base.tar.zst"
-uv_wheel="$work_dir/uv-$UV_VERSION-aarch64.whl"
+uv_wheel="$work_dir/$UV_WHEEL_FILENAME"
 
 cleanup() {
   if mountpoint -q "$rootfs/proc" 2>/dev/null; then umount -l "$rootfs/proc" || true; fi
@@ -171,15 +172,15 @@ run_chroot() {
 }
 
 echo "[3/7] Installing pinned uv $UV_VERSION wheel and the frozen Hermes environment"
-install -Dm644 "$uv_wheel" "$rootfs/tmp/uv.whl"
+install -Dm644 "$uv_wheel" "$rootfs/tmp/$UV_WHEEL_FILENAME"
 run_chroot "export DEBIAN_FRONTEND=noninteractive PIP_DISABLE_PIP_VERSION_CHECK=1; \
   python3 -m venv /opt/pearl-agent/uv-bootstrap; \
-  /opt/pearl-agent/uv-bootstrap/bin/pip install --no-cache-dir --no-index /tmp/uv.whl; \
+  /opt/pearl-agent/uv-bootstrap/bin/pip install --no-cache-dir --no-index '/tmp/$UV_WHEEL_FILENAME'; \
   python3 -m venv /opt/pearl-agent/venv; \
   cd /opt/pearl-agent/src/hermes-agent; \
   UV_PROJECT_ENVIRONMENT=/opt/pearl-agent/venv /opt/pearl-agent/uv-bootstrap/bin/uv sync --frozen --extra mcp --no-dev --no-editable; \
   /opt/pearl-agent/uv-bootstrap/bin/uv pip install --python /opt/pearl-agent/venv/bin/python --no-deps /opt/pearl-agent/src/hermes-bridge; \
-  rm -rf /opt/pearl-agent/uv-bootstrap /tmp/uv.whl"
+  rm -rf /opt/pearl-agent/uv-bootstrap '/tmp/$UV_WHEEL_FILENAME'"
 
 echo "[4/7] Validating ARM64 runtime imports and bridge entry point"
 run_chroot "/opt/pearl-agent/venv/bin/python -c 'from run_agent import AIAgent; from mcp.server import MCPServer; import pearl_hermes_bridge; print(pearl_hermes_bridge.__version__)'; \
