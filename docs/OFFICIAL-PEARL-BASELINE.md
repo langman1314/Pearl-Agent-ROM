@@ -32,7 +32,34 @@
 - SHA-256 是下载完成后本地独立计算，记录于 `manifests/official-pearl-baseline.sha256`；
 - TGZ 本体为大文件，不进入 Git。
 
-tracker 是社区维护的官方 OTA/Fastboot URL 索引，不是 Xiaomi 的签名授权本身。因此 MD5/HTTPS/tracker Git commit 只建立下载 provenance；还必须继续验证 TGZ 路径安全、内置刷机脚本、AVB 链、镜像哈希与设备身份。
+tracker 是社区维护的官方 OTA/Fastboot URL 索引，不是 Xiaomi 的签名授权本身。因此 MD5/HTTPS/tracker Git commit 只建立下载 provenance；还必须继续验证内置刷机脚本、AVB 链与设备身份。
+
+## Archive 与提取门禁
+
+完整 TGZ 已以 streaming `tarfile` 读到 gzip/tar EOF，未提取时先验证了所有 member/link path：
+
+- members：59（3 directories、56 regular files）；
+- regular file 声明总大小：`9,383,522,055` bytes；
+- 无绝对路径、`..` traversal、逃逸 symlink/hardlink；
+- 原子成员清单 SHA-256：`6a12d56840868371417046cdfcd875fc044c664d5da6865394ad0334eb861d5c`；
+- 之后用 Python 3.12 `tarfile.extractall(filter="data")` 提取到隔离 ASCII 路径；
+- 提取结果仍为 56 files / `9,383,522,055` bytes；
+- 每个提取文件重新计算 SHA-256，完整清单见 `manifests/official-pearl-images.sha256`。
+
+关键恢复/AVB 文件：
+
+| 文件 | SHA-256 |
+|---|---|
+| `images/boot.img` | `8526d0ff63b6606f4ccda6381f61921e6a56c3bcdd7fa0ace05578863f9a6f82` |
+| `images/vendor_boot.img` | `5bbb608a856c6ec2023e0acb5b4d174bf4f81ee17893708883af7453a2590654` |
+| `images/super.img` | `7ff1bb372c7ddf8c1debc6c0784a972426f16746425835dec967b266fe827026` |
+| `images/vbmeta.img` | `0dd9695425802eaf9b8bb35f2a94c41e7b0aeedff856ba9e70c860f206b82dfc` |
+| `images/vbmeta_system.img` | `4c3601c2666a43511142681dfb4eaa42de31fe3b32412cd9df39ea41a501ec39` |
+| `images/vbmeta_vendor.img` | `a7c26870259c98ba2c7e1473dd6839b03e8eb7cea759db4789a592972b5a9e56` |
+| `images/preloader_pearl.bin` | `b0761741f26539b5fc49ab3a0157b63eba75fa0bf3c9d5e104d79ca3aee265f0` |
+| `images/efuse.img` | `5e97c4a01ac2056a636e33b68dc07b8bed72d0629637973f5d60b41d5c14af30` |
+
+列出 preloader/efuse hash 只为了识别和拒绝误刷，不表示它们进入项目 installer。
 
 ## 使用边界
 
