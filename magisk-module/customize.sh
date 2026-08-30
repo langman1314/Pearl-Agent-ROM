@@ -160,9 +160,6 @@ fi
 cp "$ROOTFS/opt/pearl-agent/BUILD.json" "$STATE_ROOT/installed-build.json"
 chmod 0600 "$STATE_ROOT/installed-build.json"
 rm -f "$STATE_ROOT/mount-failed"
-# Publish completion last. If the installer is killed or aborts after entering
-# maintenance, the runtime stays fail-closed instead of starting a partial tree.
-rm -f "$MAINTENANCE_FILE"
 
 set_perm_recursive "$MODPATH" 0 0 0755 0644
 set_perm "$MODPATH/customize.sh" 0 0 0755
@@ -172,6 +169,10 @@ set_perm "$MODPATH/action.sh" 0 0 0755
 set_perm "$MODPATH/uninstall.sh" 0 0 0755
 set_perm "$MODPATH/lib/common.sh" 0 0 0755
 set_perm "$ZSTD" 0 0 0755
+
+# Publish completion last. If the installer is killed or aborts after entering
+# maintenance, the runtime stays fail-closed instead of starting a partial tree.
+rm -f "$MAINTENANCE_FILE"
 
 ui_print "- Installation staged safely"
 ui_print "- Reboot, then provision DEEPSEEK_API_KEY; native XiaoAi remains intact"
