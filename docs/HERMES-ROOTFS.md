@@ -59,9 +59,10 @@ sudo bash scripts/build-hermes-rootfs.sh
 3. `uv.lock` 与 bridge `pyproject.toml` 必须存在；
 4. ARM64 `uv` wheel 必须匹配固定 SHA-256，并只安装到可删除的 bootstrap venv；不得修改 PEP 668 管理的系统 Python；
 5. Hermes 上游明确拒绝 wheel/sdist，因此使用其指定的 editable `uv sync --frozen --extra mcp --no-dev`；保留固定 commit 的精简 runtime source，不修改或重建 lock；
-6. 监听服务依赖、Hermes `AIAgent` 与 MCP 2.0 必须能在 ARM64 chroot 中真实导入；
-7. bridge CLI 必须能启动到 `--help`；
-8. 压缩包内必须包含 Python 3.11、`pearl-hermes-bridge` 和 editable target `src/hermes-agent/run_agent.py`。
+6. bridge 的 auth/config/runtime/store 全部 unittest 必须在实际 ARM64 chroot/最终 Python 环境中通过，包含 token mode、loopback bind、SQLite crash/recovery 与 ambiguous-running 语义；
+7. 监听服务依赖、Hermes `AIAgent` 与 MCP 2.0 必须能在同一 ARM64 chroot 中真实导入；
+8. bridge CLI 必须能启动到 `--help`；
+9. 压缩包内必须包含 Python 3.11、`pearl-hermes-bridge` 和 editable target `src/hermes-agent/run_agent.py`。
 
 进入 rootfs 的 Hermes source 已排除 `.git`、tests、website、apps、TUI、GitHub metadata、venv、cache 与 Node modules；运行文件仍由 root 拥有。保留 source 是 pinned Hermes 的发布契约，不是对 frozen dependency gate 的放宽。
 

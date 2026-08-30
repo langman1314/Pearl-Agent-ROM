@@ -182,8 +182,11 @@ run_chroot "export DEBIAN_FRONTEND=noninteractive PIP_DISABLE_PIP_VERSION_CHECK=
   /opt/pearl-agent/uv-bootstrap/bin/uv pip install --python /opt/pearl-agent/venv/bin/python --no-deps /opt/pearl-agent/src/hermes-bridge; \
   rm -rf /opt/pearl-agent/uv-bootstrap '/tmp/$UV_WHEEL_FILENAME'"
 
-echo "[4/7] Validating ARM64 runtime imports and bridge entry point"
-run_chroot "/opt/pearl-agent/venv/bin/python -c 'from run_agent import AIAgent; from mcp.server import MCPServer; import pearl_hermes_bridge; print(pearl_hermes_bridge.__version__)'; \
+echo "[4/7] Testing bridge and validating ARM64 runtime entry points"
+run_chroot "cd /opt/pearl-agent/src/hermes-bridge; \
+  /opt/pearl-agent/venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v; \
+  cd /opt/pearl-agent/src/hermes-agent; \
+  /opt/pearl-agent/venv/bin/python -c 'from run_agent import AIAgent; from mcp.server import MCPServer; import pearl_hermes_bridge; print(pearl_hermes_bridge.__version__)'; \
   /opt/pearl-agent/venv/bin/pearl-hermes-bridge --help >/dev/null"
 
 install -d -m755 "$rootfs/opt/pearl-agent/manifests" "$rootfs/data/pearl-agent" \
