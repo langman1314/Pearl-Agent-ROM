@@ -1,0 +1,121 @@
+# Pearl Agent staged acceptance plan
+
+Every stage is fail-stop. Passing a later software build does not waive an earlier device/recovery gate. Store evidence outside Git and record SHA-256 for every binary/image used.
+
+## Stage 0 — host-only release evidence
+
+Required before connecting the phone:
+
+- [x] official fastboot archive MD5/SHA-256 and safe extraction verified;
+- [x] all 56 official image hashes recorded;
+- [x] strict Android sparse expansion tested;
+- [x] complete official boot/vbmeta/logical AVB graph verified;
+- [x] official XiaoAi APK identity/signatures/CRC and exact Dex targets audited;
+- [x] Nexus release built from source, all unit tests passed, release signer fixed;
+- [ ] Hermes rootfs, static ARM64 zstd and Magisk module CI artifact fully green and downloaded manifest independently rechecked;
+- [ ] external backup of Nexus release key confirmed;
+- [ ] approved Magisk 30.7 and Vector 2.2 install artifacts copied to the controlled release directory with hashes.
+
+Exit criterion: one release manifest identifies every non-stock artifact. Status remains NO FLASH.
+
+## Stage 1 — read-only target identity
+
+Run both modes of `scripts/collect-device-preflight.sh` and verify each manifest.
+
+- [ ] ADB product/vendor/system identity collected;
+- [ ] current fingerprint/SDK/security patch/XiaoAi version recorded;
+- [ ] verified-boot and lock properties recorded;
+- [ ] fastboot product/unlocked/secure/anti variables recorded;
+- [ ] current-slot/slot-count/has-slot and boot/vbmeta sizes reconciled;
+- [ ] recovery and fastboot remain reachable independently of Android.
+
+Stop on a non-pearl identity, ambiguous slots, unexpected lock state, evidence hash failure or anti-rollback conflict.
+
+## Stage 2 — stock backup and official recovery rehearsal
+
+This stage requires a separately reviewed root/recovery method; the generic collector intentionally does not read partition contents.
+
+- [ ] export every available stock boot and vbmeta slot without writing partitions;
+- [ ] hash and copy backups to two independent host locations;
+- [ ] compare currently installed stock images with the approved official package where applicable;
+- [ ] prepare minimal stock-boot restore commands using the actual partition map;
+- [ ] review the complete command transcript and prove it has no efuse/preloader/super/userdata/metadata side effect;
+- [ ] rehearse recovery entry and device detection without flashing.
+
+Exit criterion: Android can fail to boot without losing an independently accessible stock restore route.
+
+## Stage 3 — controlled Magisk boot experiment
+
+- [ ] regenerate the patch from the exact official boot SHA-256, never reuse the historical patched image;
+- [ ] record Magisk asset identity and patch logs without secrets;
+- [ ] pull, hash and unpack the result; compare stock/patched components with pinned `magiskboot`;
+- [ ] validate header/geometry/kernel/bootconfig and document embedded AVB flags honestly;
+- [ ] use temporary boot if the verified pearl bootloader supports it; otherwise use only the approved slot-specific plan;
+- [ ] verify Android reaches boot completion, ADB, Wi-Fi, telephony and stock XiaoAi;
+- [ ] immediately execute stock rollback and prove it works before continuing.
+
+Do not install Vector or Nexus in this stage.
+
+## Stage 4 — data-only Hermes module
+
+- [ ] reinstall the accepted patched boot state only after Stage 3 rollback succeeds;
+- [ ] install the hash-approved Magisk module ZIP;
+- [ ] verify installer device/SDK/Magisk/free-space/hash gates;
+- [ ] confirm no partition is written by the module;
+- [ ] inspect private `/dev`, devpts, `/proc`, `/run`, absence of `/dev/block` and absence of sysfs;
+- [ ] provision DeepSeek credentials through mode-0600 files without terminal/log exposure;
+- [ ] validate authenticated `127.0.0.1:51338/mcp` and reject missing/wrong Bearer tokens;
+- [ ] exercise submit/status/cancel/run and reboot persistence;
+- [ ] force three short crashes and verify fuse/backoff; test disable and one-version rootfs rollback.
+
+Exit criterion: Hermes survives reboot and fails closed without token while Android/XiaoAi remain native.
+
+## Stage 5 — Vector and Nexus scope
+
+- [ ] install hash-approved Vector 2.2 and the approved Nexus release APK;
+- [ ] enable Zygisk/Vector scope only for `com.miui.voiceassist`;
+- [ ] prove no other package is in module scope;
+- [ ] verify installed XiaoAi exact version is official `507009011` before enabling hooks;
+- [ ] verify unsupported or fallback config does not install hooks;
+- [ ] reboot and capture Nexus/Vector/module logs without API keys or MCP token.
+
+Exit criterion: disabling Nexus or removing its scope restores fully stock XiaoAi after reboot.
+
+## Stage 6 — voice and fail-open behavior
+
+- [ ] power-button activation works before and after provisioning;
+- [ ] original XiaoAi wake phrase and native answers remain functional;
+- [ ] exact query/dialog capture occurs once;
+- [ ] `qb0.ua.z0(Instruction)` response target is captured;
+- [ ] native stream/TTS blocking occurs only for an active injected turn;
+- [ ] Nexus text chunks render and `<FINAL>` terminates once;
+- [ ] no duplicate native/injected TTS occurs;
+- [ ] Hermes delegation works for a complex task;
+- [ ] disable network, kill Nexus service, stop Hermes and supply wrong token separately; every case returns to native XiaoAi without blank UI or wake breakage;
+- [ ] response-target timeout after 8 seconds clears injection state.
+
+Custom wake phrase remains disabled until this stock-flow matrix passes. It must be additive and removable, never a destructive replacement for XiaoAi DSP models.
+
+## Stage 7 — endurance and power
+
+- [ ] 24-hour idle test with screen off and Doze;
+- [ ] record battery drain, idle RAM/CPU, temperature and wakeups against stock baseline;
+- [ ] 100 sequential voice turns without leaked turn state;
+- [ ] network handover, airplane-mode cycle and DNS recovery;
+- [ ] reboot loop and crash-fuse behavior;
+- [ ] storage-pressure/log-rotation behavior;
+- [ ] no thermal or battery regression beyond the approved threshold.
+
+Thresholds must be chosen from measured stock data, not invented before the device run.
+
+## Stage 8 — final rollback acceptance
+
+- [ ] disable Nexus scope and prove native XiaoAi;
+- [ ] uninstall Nexus/Vector and prove native XiaoAi;
+- [ ] disable/uninstall Magisk module while preserving user data as documented;
+- [ ] securely purge retained Hermes secrets/data only after explicit approval;
+- [ ] restore stock boot using the rehearsed path;
+- [ ] verify official boot hash/state and normal reboot;
+- [ ] retain official fastboot package and all evidence externally.
+
+Only after all applicable boxes pass may the release be described as device-accepted. Even then, project installers must never include efuse, preloader or generic Xiaomi `flash_all` behavior.
