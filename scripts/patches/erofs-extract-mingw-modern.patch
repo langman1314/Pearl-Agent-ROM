@@ -86,3 +86,30 @@
          INVALID_HANDLE_VALUE)
          return -1;
  
+--- a/ExtractHelper.cpp
++++ b/ExtractHelper.cpp
+@@ -231,7 +231,11 @@
+             /* the last lcluster can be divided into 3 parts */
+             if (map.m_la + map.m_llen > inode->i_size)
+                 map.m_llen = inode->i_size - map.m_la;
+-
++
++            /* Preserve unmapped logical holes instead of collapsing them. */
++            if (outfd >= 0 && lseek(outfd, map.m_la, SEEK_SET) < 0)
++                goto fail_eio;
++
+             pos += map.m_llen;
+-
++
+             /* should skip decomp? */
+@@ -294,6 +299,9 @@
+                 } while (map.m_llen);
+             }
+         }
++
++        if (outfd >= 0 && ftruncate(outfd, inode->i_size) < 0)
++            goto fail_eio;
+-
++
+     out:
+         if (raw)
