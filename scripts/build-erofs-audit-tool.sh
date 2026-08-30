@@ -83,7 +83,9 @@ for relative in "${source_files[@]}"; do
       exit 1
     }
 done
-patch --batch --forward -d "$release_source" -p1 < "$COMPAT_PATCH"
+# Compile the pinned Git checkout (LF), using only the release's omitted static
+# libraries. This avoids patching release CRLF files after identity was proven.
+patch --batch --forward -d "$source_checkout" -p1 < "$COMPAT_PATCH"
 
 for archive in liberofs_lib_static.a libdeflate.a libzstd_static.lib liblz4_static.lib; do
   test -s "$release_source/lib/$archive" || {
@@ -116,12 +118,12 @@ build_once() {
     -D_WIN32_WINNT=0x0600 -DWINVER=0x0600 \
     -ffile-prefix-map="$work_dir"=/usr/src/pearl-erofs-audit \
     -fdebug-prefix-map="$work_dir"=/usr/src/pearl-erofs-audit \
-    -I"$release_source" -I"$release_source/erofs" -I"$iconv_prefix/include" \
-    "$release_source/main.cpp" \
-    "$release_source/ErofsNode.cpp" \
-    "$release_source/ExtractHelper.cpp" \
-    "$release_source/ExtractOperation.cpp" \
-    "$release_source/ErofsHardlinkHandle.cpp" \
+    -I"$source_checkout" -I"$source_checkout/erofs" -I"$iconv_prefix/include" \
+    "$source_checkout/main.cpp" \
+    "$source_checkout/ErofsNode.cpp" \
+    "$source_checkout/ExtractHelper.cpp" \
+    "$source_checkout/ExtractOperation.cpp" \
+    "$source_checkout/ErofsHardlinkHandle.cpp" \
     -Wl,--no-insert-timestamp,--build-id=none,--start-group \
     "$release_source/lib/liberofs_lib_static.a" \
     "$release_source/lib/libdeflate.a" \
