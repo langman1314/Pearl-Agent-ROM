@@ -43,7 +43,18 @@
 - `vbmeta_system` hashtree：`product`、`system`、`system_ext`；
 - `vbmeta_vendor` hashtree：`vendor`。
 
-`vbmeta_system` 和 `vbmeta_vendor` 的 RSA 签名已验证成功；完整 hashtree 校验尚未完成，因为当前提取目录没有从 `super` 拆出的 `product.img`、`system.img`、`system_ext.img` 和 `vendor.img`。因此不能把“子 vbmeta 签名有效”误写成“所有 logical partition 数据已验证”。
+`vbmeta_system` 和 `vbmeta_vendor` 的 RSA 签名已验证成功，但这不代表它们描述的 logical partition 数据自洽。现已用 `scripts/extract-super-extents.py` 完整读取 `super.zst` 解压后的 `9,126,805,504` 字节、读到外层 ZIP member EOF 触发 CRC 校验，并原子提取全部八个已填充 `_a` partition；SHA-256 见 `manifests/logical-partitions.sha256`。
+
+### 子 vbmeta 与 super 的不可满足矛盾
+
+| Partition | super extent 总字节 | descriptor data | tree | FEC | descriptor 最低总字节 | 结论 |
+|---|---:|---:|---:|---:|---:|---|
+| `product` | 3,457,253,376 | 4,527,869,952 | 35,659,776 | 36,077,568 | 4,599,607,296 | 比 extent 大 1,142,353,920，物理上不可能 |
+| `system` | 863,363,072 | 819,441,664 | 6,459,392 | 6,529,024 | 832,430,080 | 尺寸可容纳，仍需单独重算 root digest |
+| `system_ext` | 869,822,464 | 897,777,664 | 7,077,888 | 7,159,808 | 912,015,360 | 比 extent 大 42,192,896，物理上不可能 |
+| `vendor` | 1,965,887,488 | 1,972,944,896 | 15,544,320 | 15,720,448 | 2,004,209,664 | 比 extent 大 38,322,176，物理上不可能 |
+
+因此至少 `product`、`system_ext`、`vendor` 的签名 hashtree descriptor 不可能对应当前 `super.zst`。这不是补一个缺失文件或把 top-level flags 改回 0 能修复的问题；它证明该第三方包的签名 metadata 与 logical payload 来自不一致的 donor/layout。当前包不能建立可验证 AVB 链，继续保持 **NO FLASH**。
 
 ## flags 篡改证明
 
@@ -95,7 +106,8 @@ Magisk patched boot 同样把内嵌 vbmeta flags 从 stock 的 `0` 改成 `3`。
 
 ## 剩余门禁
 
-- 从 `super.zst` 的只读副本提取 logical partitions，完成全部 hashtree 验证；
+- 当前 `super.zst` 已完整提取并证明无法满足签名 hashtree descriptor；不得尝试通过关闭 verification 把该矛盾包转成可刷状态；
+- 获取可核验的官方 pearl fastboot/recovery 基线和官方哈希，重新选择 ROM 基线；
 - 从真机当前槽导出 `boot`、`vbmeta`、`vbmeta_system`、`vbmeta_vendor` 并对比；
 - 记录 bootloader unlock/critical unlock 状态及当前 AVB/verity 状态；
 - 使用同版本 Magisk 30.7 官方 `magiskboot` 对 stock 和 patched boot 再做工具级 unpack/repack 测试；
