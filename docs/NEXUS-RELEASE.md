@@ -10,10 +10,10 @@
 | minSdk | `26` |
 | targetSdk | `34` |
 | compileSdk | `37` |
-| Nexus Git tree | `b757a37d4a156bbdf0026c0b72ba198c8c3d5891` |
+| Nexus Git tree | `55248aaef9e36904273d4b5963a85b9c1b45fc96` |
 | APK 文件 | `nexus-1.0.1-pearl.1-release.apk` |
-| APK 字节数 | `4,875,619` |
-| APK SHA-256 | `58f35ea630a54c9bc12be099957295a86050ffdb65bdd56a726c40ba47c60185` |
+| APK 字节数 | `4,876,788` |
+| APK SHA-256 | `6f033f0dcedaf0c923e8a45696847f17d15886e7afa3e57186d50d0479e4f13b` |
 
 APK 位于 gitignored `artifacts/nexus/`，不进入源码仓库。`aapt dump badging` 与 `apksigner verify --verbose --print-certs` 的完整输出随本地 audit artifact 保存。
 
@@ -64,6 +64,6 @@ APK 位于 gitignored `artifacts/nexus/`，不进入源码仓库。`aapt dump ba
 
 **签名 APK 目前不声明 byte-for-byte reproducible。**
 
-一次强制 `--rerun-tasks assembleRelease` 产生相同大小、相同 672 个 ZIP entry 名称、CRC、uncompressed/compressed size 与 timestamp，但 APK 总 SHA-256 从 `58f35e…0185` 变为 `1e09fd…cb2e`。差异因此局限于 ZIP entries 以外的 APK signing block；两份 payload 等价，但严格 signed-byte reproducibility gate 未通过。
+在加入 507012002 config 之前做过一次强制 `--rerun-tasks assembleRelease`：两次产物有相同大小、相同 672 个 ZIP entry 名称、CRC、uncompressed/compressed size 与 timestamp，但 APK 总 SHA-256 从 `58f35e…0185` 变为 `1e09fd…cb2e`。差异因此局限于 ZIP entries 以外的 APK signing block；两份 payload 等价，但严格 signed-byte reproducibility gate 未通过。当前 `6f033f…f13b` release 继续按单一批准 hash 管理，不借源码变化重置这一未通过结论。
 
 安全策略是不修改 signer 实现、不注入伪随机源、不降低验证算法来追求相同字节。发布时以“固定源码 tree + 固定工具链 + 固定 signer certificate + 单个批准 APK hash”的 provenance 模式管理；若未来要声明严格可复现，必须先解释并消除 signing-block 差异，再独立构建两次得到相同总 SHA-256。
