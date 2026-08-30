@@ -71,7 +71,9 @@ tracker 是社区维护的官方 OTA/Fastboot URL 索引，不是 Xiaomi 的签�
 
 之后从 raw image 的 LP metadata 提取 8 个 populated slot-a logical partitions。严格 manifest SHA-256：
 
-`3e586710cae229c7bd5d04d605ceb81bd1393732768fc08799ba69478b4e454d`
+`dacfb6bb19c39f347a2af27ce28266c56175d569823c1d1c16dc5357dd0acf77`
+
+该 canonical LF manifest 已跟踪为 `manifests/official-pearl-logical.sha256`，并逐行对 8 个严格提取镜像重新计算验证。
 
 固定 AOSP avbtool commit `c5066a96caa7bf4150c0a8cc8cc14ab81733fdc7` 在 portable MSYS2/POSIX 下执行 `verify_image --follow_chain_partitions`，完整通过 15 项：top-level vbmeta；chained boot/footer/hash；vbmeta_system 与 product/system/system_ext hashtrees；vbmeta_vendor 与 vendor hashtree；dtbo/vendor_boot hashes；mi_ext/odm/odm_dlkm/vendor_dlkm hashtrees。顶层和 child vbmeta 使用同一 public-key SHA-1 `b2a02f1e56e366d727a1a8e089762fe0b91bbc84`，顶层 flags 为 `0`。
 

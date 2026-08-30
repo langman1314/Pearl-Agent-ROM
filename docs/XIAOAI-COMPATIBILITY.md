@@ -54,7 +54,9 @@ Three regression tests cover non-zero FILL, RAW, DONT_CARE, CRC32, malformed FIL
 
 Raw LP extraction changed only `vendor_a.img` relative to the flawed sparse conversion. The strict logical-partition manifest SHA-256 is:
 
-`3e586710cae229c7bd5d04d605ceb81bd1393732768fc08799ba69478b4e454d`
+`dacfb6bb19c39f347a2af27ce28266c56175d569823c1d1c16dc5357dd0acf77`
+
+The canonical LF file is tracked as `manifests/official-pearl-logical.sha256`; all eight lines were rehashed against the strict outputs.
 
 Both XiaoAi APKs were then extracted using:
 
