@@ -6,6 +6,10 @@ MODDIR=${0%/*}
 action="${1:-toggle}"
 case "$action" in
   enable)
+    if [ -f "$MAINTENANCE_FILE" ]; then
+      pearl_log "Enable refused: interrupted install/upgrade marker present; reinstall the verified module"
+      exit 1
+    fi
     rm -f "$DISABLED_FILE"
     # A Magisk app action may run in an app-private mount namespace. Do not
     # create chroot mounts here and pretend they are visible to init services.

@@ -54,6 +54,10 @@ if [ -f "$DISABLED_FILE" ]; then
   pearl_log "post-fs-data: module runtime is disabled"
   exit 0
 fi
+if [ -f "$MAINTENANCE_FILE" ]; then
+  pearl_log "post-fs-data: interrupted install/upgrade maintenance marker present; refusing mounts"
+  exit 0
+fi
 
 if ! mount_chroot; then
   unmount_chroot

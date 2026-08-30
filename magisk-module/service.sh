@@ -15,13 +15,13 @@ wait_for_boot() {
 sleep_while_enabled() {
   remaining="$1"
   while [ "$remaining" -gt 0 ]; do
-    [ -f "$DISABLED_FILE" ] && return 1
+    { [ -f "$DISABLED_FILE" ] || [ -f "$MAINTENANCE_FILE" ]; } && return 1
     step=5
     [ "$remaining" -lt "$step" ] && step="$remaining"
     sleep "$step"
     remaining=$((remaining - step))
   done
-  [ ! -f "$DISABLED_FILE" ]
+  [ ! -f "$DISABLED_FILE" ] && [ ! -f "$MAINTENANCE_FILE" ]
 }
 
 claim_supervisor() {
@@ -92,6 +92,10 @@ if [ -f "$DISABLED_FILE" ]; then
   pearl_log "service: runtime disabled"
   exit 0
 fi
+if [ -f "$MAINTENANCE_FILE" ]; then
+  pearl_log "service: interrupted install/upgrade maintenance marker present; reinstall required"
+  exit 0
+fi
 if [ ! -s "$MCP_TOKEN_FILE" ]; then
   pearl_log "service: root-only MCP token missing; refusing unauthenticated startup"
   exit 1
@@ -104,7 +108,7 @@ command -v setsid >/dev/null 2>&1 || {
 
 crash_count=0
 backoff=2
-while [ ! -f "$DISABLED_FILE" ]; do
+while [ ! -f "$DISABLED_FILE" ] && [ ! -f "$MAINTENANCE_FILE" ]; do
   started="$(date +%s)"
   start_once
   status=$?
@@ -112,7 +116,7 @@ while [ ! -f "$DISABLED_FILE" ]; do
   runtime=$((ended - started))
   pearl_log "Hermes bridge exited status=$status runtime=${runtime}s"
 
-  [ -f "$DISABLED_FILE" ] && break
+  { [ -f "$DISABLED_FILE" ] || [ -f "$MAINTENANCE_FILE" ]; } && break
   if [ "$runtime" -ge 900 ]; then
     crash_count=0
     backoff=2

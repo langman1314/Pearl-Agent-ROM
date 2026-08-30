@@ -9,6 +9,7 @@ RUN_DIR="$STATE_ROOT/run"
 PID_FILE="$RUN_DIR/hermes-bridge.pid"
 SUPERVISOR_PID_FILE="$RUN_DIR/supervisor.pid"
 DISABLED_FILE="$STATE_ROOT/disabled"
+MAINTENANCE_FILE="$STATE_ROOT/maintenance"
 MCP_TOKEN_FILE="$DATA_ROOT/config/mcp-token"
 SUPERVISOR_LOG="$LOG_DIR/supervisor.log"
 

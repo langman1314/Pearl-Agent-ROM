@@ -58,13 +58,15 @@ No Android application partition is mounted into the chroot. The Hermes terminal
 - verifies an integrity-covered uncompressed-size sidecar and requires 125% of that size plus 256 MiB free on `/data` before extraction;
 - generates a 256-bit MCP Bearer token from `/dev/urandom`, stored only as `0600` under persistent data;
 - runs zstd integrity validation before extraction;
-- stops/unmounts an old runtime and removes orphan `rootfs.new.*` stages before creating a new stage;
+- publishes a persistent maintenance marker before stopping/unmounting an old runtime, preventing the existing supervisor from restarting during upgrade;
+- removes orphan `rootfs.new.*` stages before creating a new stage;
 - re-scans the extracted tree and rejects Android partition, GPT, bootloader image payloads and known firmware/preloader/fastboot flashing-script names on-device;
 - checks the extracted Hermes commit against `a2e19d484cb5591df8dafe667c93345b62d9bf06`;
 - provisions a non-secret DeepSeek `config.yaml` only when absent and preserves user edits on upgrades;
 - extracts into `rootfs.new.<pid>`;
 - preserves the current rootfs as `rootfs.previous`;
-- restores the previous rootfs if activation fails.
+- restores the previous rootfs if activation fails;
+- clears maintenance only after activation metadata is published; a killed/aborted installer remains fail-closed and requires reinstall rather than starting a partial tree.
 
 The module does not contain API keys. The first-boot provisioner must write `$HERMES_HOME/.env` with mode `0600`; `config.yaml` contains behavior only and is also forced to mode `0600`.
 
