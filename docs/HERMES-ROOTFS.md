@@ -11,7 +11,7 @@
 | Hermes package version | `0.20.6` |
 | MCP SDK | `2.0.0`，由 Hermes `uv.lock` 固定 |
 | Pearl Hermes Bridge | `0.1.0` |
-| uv bootstrap | `0.8.11` |
+| uv bootstrap | `0.8.11` / ARM64 wheel SHA-256 `0a7fcbe71cc5402b7c3d4c381f9b970a455d8ccc2a43ee2ce5ac2b617ec0534c` |
 
 选择 Bookworm 是为了使用发行版原生 Python 3.11；Hermes 官方要求 Python `>=3.11,<3.14`。构建过程中必须使用 Hermes 上游仓库的 `uv.lock --frozen`，禁止无锁解析依赖。
 
@@ -22,7 +22,7 @@
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
-  arch-test binutils debian-archive-keyring mmdebstrap qemu-user-static \
+  arch-test binutils curl debian-archive-keyring mmdebstrap qemu-user-static \
   binfmt-support rsync zstd git ca-certificates
 ```
 
@@ -57,9 +57,10 @@ sudo bash scripts/build-hermes-rootfs.sh
 1. Hermes checkout 的 `HEAD` 必须精确等于固定 commit；
 2. Hermes tracked files 必须干净；
 3. `uv.lock` 与 bridge `pyproject.toml` 必须存在；
-4. 监听服务依赖、Hermes `AIAgent` 与 MCP 2.0 必须能在 ARM64 chroot 中真实导入；
-5. bridge CLI 必须能启动到 `--help`；
-6. 压缩包内必须包含 Python 3.11 和 `pearl-hermes-bridge`。
+4. ARM64 `uv` wheel 必须匹配固定 SHA-256，并只安装到可删除的 bootstrap venv；不得修改 PEP 668 管理的系统 Python；
+5. 监听服务依赖、Hermes `AIAgent` 与 MCP 2.0 必须能在 ARM64 chroot 中真实导入；
+6. bridge CLI 必须能启动到 `--help`；
+7. 压缩包内必须包含 Python 3.11 和 `pearl-hermes-bridge`。
 
 ## 输出
 
