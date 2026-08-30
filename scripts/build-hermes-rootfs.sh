@@ -178,7 +178,7 @@ run_chroot "export DEBIAN_FRONTEND=noninteractive PIP_DISABLE_PIP_VERSION_CHECK=
   /opt/pearl-agent/uv-bootstrap/bin/pip install --no-cache-dir --no-index '/tmp/$UV_WHEEL_FILENAME'; \
   python3 -m venv /opt/pearl-agent/venv; \
   cd /opt/pearl-agent/src/hermes-agent; \
-  UV_PROJECT_ENVIRONMENT=/opt/pearl-agent/venv /opt/pearl-agent/uv-bootstrap/bin/uv sync --frozen --extra mcp --no-dev --no-editable; \
+  UV_PROJECT_ENVIRONMENT=/opt/pearl-agent/venv /opt/pearl-agent/uv-bootstrap/bin/uv sync --frozen --extra mcp --no-dev; \
   /opt/pearl-agent/uv-bootstrap/bin/uv pip install --python /opt/pearl-agent/venv/bin/python --no-deps /opt/pearl-agent/src/hermes-bridge; \
   rm -rf /opt/pearl-agent/uv-bootstrap '/tmp/$UV_WHEEL_FILENAME'"
 
@@ -215,7 +215,9 @@ cat >"$rootfs/opt/pearl-agent/BUILD.json" <<EOF
 EOF
 
 rm -f "$rootfs/usr/bin/qemu-aarch64-static" "$rootfs/usr/sbin/policy-rc.d"
-rm -rf "$rootfs/opt/pearl-agent/src"
+# Hermes intentionally forbids wheel/sdist builds; keep its pinned, pruned source for
+# uv's editable runtime install. The bridge itself is installed non-editably.
+rm -rf "$rootfs/opt/pearl-agent/src/hermes-bridge"
 : >"$rootfs/etc/machine-id"
 rm -f "$rootfs/var/lib/dbus/machine-id"
 find "$rootfs/var/log" -type f -exec truncate -s 0 {} +
@@ -237,6 +239,7 @@ cp "$rootfs/opt/pearl-agent/manifests/python-freeze.txt" "$OUTPUT_DIR/$artifact_
 # The payload must actually be ARM64 and include the bridge executable.
 echo "[6/7] Offline archive validation"
 tar --use-compress-program=unzstd -tf "$artifact" | grep -Fx './opt/pearl-agent/venv/bin/pearl-hermes-bridge' >/dev/null
+tar --use-compress-program=unzstd -tf "$artifact" | grep -Fx './opt/pearl-agent/src/hermes-agent/run_agent.py' >/dev/null
 tar --use-compress-program=unzstd -tf "$artifact" | grep -Fx './usr/bin/python3.11' >/dev/null
 
 actual_hash="$(cut -d' ' -f1 "$artifact.sha256")"
