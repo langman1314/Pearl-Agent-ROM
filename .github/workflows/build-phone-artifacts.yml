@@ -42,10 +42,12 @@ jobs:
           sudo apt-get -o Acquire::Check-Valid-Until=false update
           sudo apt-get -o Acquire::Check-Valid-Until=false install -y --no-install-recommends \
             arch-test binutils ca-certificates debian-archive-keyring file \
-            gcc-aarch64-linux-gnu git make mmdebstrap qemu-user-static rsync unzip zip zstd
+            gcc-aarch64-linux-gnu git libc6-dev-arm64-cross make mmdebstrap \
+            qemu-user-static rsync unzip zip zstd
           dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' \
             arch-test binutils ca-certificates debian-archive-keyring file \
-            gcc-aarch64-linux-gnu git make mmdebstrap qemu-user-static rsync unzip zip zstd \
+            gcc-aarch64-linux-gnu git libc6-dev-arm64-cross make mmdebstrap \
+            qemu-user-static rsync unzip zip zstd \
             | sort > host-build-packages.tsv
 
       - name: Fetch exact Hermes source
