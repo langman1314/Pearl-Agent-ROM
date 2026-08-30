@@ -1,6 +1,7 @@
 {
   "package_name": "com.miui.voiceassist",
   "version_code": 507009011,
+  "apk_sha256": "dd75a0d9b1c0803906eafe72126dc44a150f16337e26c8fcf53304f13d74140b",
   "is_beta": false,
   "config": {
     "actions": {

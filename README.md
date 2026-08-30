@@ -39,4 +39,4 @@ Redmi Note 12T Pro (`pearl`) 的常驻 Android Agent 定制工程。
 4. 每个变更镜像必须有 SHA-256 和原厂回滚镜像。
 5. 离线结构校验完成前不得实际刷机。
 
-详见 `docs/ARCHITECTURE.md`、`docs/OFFICIAL-PEARL-BASELINE.md`、`docs/THIRD-PARTY-RETIREMENT.md`、`docs/DEVICE-PREFLIGHT.md`、`docs/NEXUS-RELEASE.md`、`docs/PHONE-ARTIFACTS.md`、`docs/XIAOAI-COMPATIBILITY.md`、`docs/CUSTOM-WAKE-PHRASE.md` 与 `docs/ACCEPTANCE.md`。
+详见 `docs/ARCHITECTURE.md`、`docs/OFFICIAL-PEARL-BASELINE.md`、`docs/THIRD-PARTY-RETIREMENT.md`、`docs/DEVICE-PREFLIGHT.md`、`docs/DEVICE-OBSERVATION-01.md`、`docs/NEXUS-RELEASE.md`、`docs/PHONE-ARTIFACTS.md`、`docs/XIAOAI-COMPATIBILITY.md`、`docs/CUSTOM-WAKE-PHRASE.md` 与 `docs/ACCEPTANCE.md`。

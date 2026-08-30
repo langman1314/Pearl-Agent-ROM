@@ -1,5 +1,7 @@
 # Target pearl read-only preflight
 
+First physical ADB findings and remaining bootloader gates are recorded in `docs/DEVICE-OBSERVATION-01.md`.
+
 ## Purpose
 
 No boot image or installer command may be approved from ROM-script assumptions alone. `scripts/collect-device-preflight.sh` records selected target-phone facts through fixed read-only ADB or fastboot command lists. It does not read partition contents and contains no flash, erase, format, reboot, boot, set_active, update, dd, push or remount operation.

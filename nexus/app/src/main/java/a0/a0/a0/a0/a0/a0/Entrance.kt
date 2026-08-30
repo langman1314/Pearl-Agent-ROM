@@ -5,6 +5,7 @@ import com.niki914.nexus.agentic.mod.HookLocalSettings
 import com.niki914.nexus.agentic.mod.XService
 import com.niki914.nexus.agentic.mod.feat.hyper.XiaoaiChatHook
 import com.niki914.nexus.agentic.mod.feat.oppo.BreenoChatHook
+import com.niki914.nexus.agentic.repo.ApkIdentityVerifier
 import com.niki914.nexus.agentic.repo.WebSettingsFailureReason
 import com.niki914.nexus.agentic.repo.WebSettingsResult
 import com.niki914.nexus.agentic.repo.canInstallHooks
@@ -48,6 +49,18 @@ class Entrance : IXposed() {
             HookLocalSettings.update(ctx, client)
             val webSettingsResult = XRepo.web.await()
             val targetPkg = params.packageName
+            val exactConfigAvailable = webSettingsResult.canInstallHooks()
+            val requiresApkIdentity = targetPkg == HostApp.XiaoAi.packageName
+            val apkIdentityMatches = !requiresApkIdentity ||
+                (webSettingsResult as? WebSettingsResult.Success)
+                    ?.takeIf { exactConfigAvailable }
+                    ?.let { result ->
+                        ApkIdentityVerifier.matches(
+                            expectedSha256 = result.settings.apkSha256,
+                            sourcePath = params.appInfo?.sourceDir,
+                        )
+                    } == true
+            val isApkIdentityMismatch = exactConfigAvailable && !apkIdentityMatches
             val isFallbackVersion =
                 webSettingsResult is WebSettingsResult.Success && webSettingsResult.isFallbackVersion
             val isNetworkError =
@@ -67,7 +80,7 @@ class Entrance : IXposed() {
                     XService.postNetworkErrorNotification(client)
                 }
 
-                isNoSupportedVersion -> {
+                isNoSupportedVersion || isApkIdentityMismatch -> {
                     XService.postUnsupportedVersionNotification(
                         hostApp = HostApp.fromPackageName(targetPkg),
                         hostVersion = targetPkg?.let {
@@ -78,7 +91,7 @@ class Entrance : IXposed() {
                 }
             }
 
-            if (webSettingsResult.canInstallHooks()) {
+            if (exactConfigAvailable && apkIdentityMatches) {
                 onSettingsFetched(params, targetPkg, client)
             }
         }

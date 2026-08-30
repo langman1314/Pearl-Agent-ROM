@@ -60,6 +60,9 @@ class WebSettings(props: JsonObject = JsonObject(emptyMap())) : XSettings(props)
     val isBeta: Boolean
         get() = getBoolean("is_beta", false)
 
+    val apkSha256: String
+        get() = getString("apk_sha256")
+
     val config: JsonObject?
         get() = getObject("config")
 }

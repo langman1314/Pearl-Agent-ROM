@@ -121,13 +121,14 @@ Nexus includes independent version-exact assets:
 
 - `app/src/main/assets/hooks/com.miui.voiceassist/507009011/config.json` — mandatory official recovery baseline;
 - `app/src/main/assets/hooks/com.miui.voiceassist/507012002/config.json` — original third-party input compatibility only;
-- existing `507013003` — separate upstream-audited build.
+- existing `507013003` — legacy target metadata only; it is now diagnostic-only until its exact APK SHA-256 is independently recovered and bound.
 
-JVM tests parse the official and original-input assets and lock every audited owner, method, parameter and return descriptor. Config resolution remains fail-closed:
+JVM tests parse the official and original-input assets and lock every audited owner, method, parameter, return descriptor and APK hash. Config resolution remains fail-closed:
 
-- only the exact installed version may install XiaoAi hooks;
+- XiaoAi requires both exact installed version and exact full-APK SHA-256 before hooks may install;
+- official `507009011` is bound to `dd75a0d9...d74140b`, and original-input `507012002` to `326fe060...64406`;
 - nearest-version network fallback cannot install XiaoAi hooks;
-- missing or malformed config leaves native XiaoAi untouched;
+- missing, malformed, unreadable or mismatched APK identity leaves native XiaoAi untouched;
 - response-target timeout clears the active turn and fails open to native XiaoAi;
 - power-button and original wake flow are not replaced.
 

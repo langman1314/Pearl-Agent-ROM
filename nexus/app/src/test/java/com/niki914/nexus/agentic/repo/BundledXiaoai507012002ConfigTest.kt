@@ -21,6 +21,10 @@ class BundledXiaoai507012002ConfigTest {
         val root = Json.parseToJsonElement(file.readText()).jsonObject
         assertEquals("com.miui.voiceassist", root.getValue("package_name").jsonPrimitive.content)
         assertEquals(507012002L, root.getValue("version_code").jsonPrimitive.content.toLong())
+        assertEquals(
+            "326fe0601b11698e70f96aca5dc05d1c783cf675ebc872024e96b405aaf64406",
+            root.getValue("apk_sha256").jsonPrimitive.content,
+        )
         assertFalse(root.getValue("is_beta").jsonPrimitive.boolean)
 
         val actions = root.getValue("config").jsonObject.getValue("actions").jsonObject
