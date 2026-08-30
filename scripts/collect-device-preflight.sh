@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# Prevent Git Bash/MSYS from rewriting Android absolute paths such as
+# /dev/block/by-name/boot into host Windows paths before passing them to adb.
+export MSYS_NO_PATHCONV=1
+export MSYS2_ARG_CONV_EXCL='*'
+
 # Read-only target-device evidence collector. This script has no flash, erase,
 # format, reboot, boot, set_active, update, dd, push, or remount operation.
 

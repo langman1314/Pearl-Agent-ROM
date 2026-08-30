@@ -21,6 +21,8 @@ case "${1:-}" in
         ro.build.version.sdk) printf '35\n' ;;
         *) printf 'mock-value\n' ;;
       esac
+    elif [[ "${1:-}" == "ls" ]]; then
+      printf '%s\n' "$@"
     else
       printf 'mock-shell-output\n'
     fi
@@ -66,6 +68,11 @@ for evidence in "$work/adb-evidence" "$work/fastboot-evidence"; do
 done
 
 grep -F 'shell getprop ro.product.device' "$work/adb-evidence/commands.tsv" >/dev/null
+grep -Fx '/dev/block/by-name/boot' "$work/adb-evidence/adb-by-name-boot.txt" >/dev/null
+if grep -Fq ':/' "$work/adb-evidence/adb-by-name-boot.txt"; then
+  echo "MSYS rewrote an Android absolute path" >&2
+  exit 1
+fi
 grep -F 'getvar current-slot' "$work/fastboot-evidence/commands.tsv" >/dev/null
 
 if ADB_BIN="$work/adb" bash "$COLLECTOR" \
