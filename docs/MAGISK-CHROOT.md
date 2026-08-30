@@ -85,7 +85,7 @@ From a root shell:
 /data/adb/modules/pearl_agent/action.sh rollback
 ```
 
-The Magisk app action button invokes toggle mode. Uninstall removes the active/previous rootfs and runtime mounts but deliberately retains `data/`, because it may contain secrets and user work. The final stock rollback package will offer an explicit secure-purge choice.
+The Magisk app action button invokes toggle mode. Uninstall stops/mount-detaches the runtime, removes active/previous/staged/quarantined rootfs trees and transient build/mount metadata, but deliberately retains `data/` because it may contain secrets and user work. It leaves root-only `disabled` + `uninstalled` markers so a departing old supervisor cannot restart; only a fully completed verified reinstall clears those markers. Ordinary upgrades preserve an intentional user-disabled state. The final stock rollback package will offer an explicit secure-purge choice.
 
 ## Build
 

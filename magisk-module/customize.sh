@@ -76,6 +76,8 @@ ui_print "- Free-space gate passed (${available_kb} KiB available)"
 # leave the old process and new payload attached to ambiguous paths.
 # shellcheck source=lib/common.sh
 . "$MODPATH/lib/common.sh"
+reinstall_after_uninstall=false
+[ -f "$UNINSTALLED_FILE" ] && reinstall_after_uninstall=true
 touch "$MAINTENANCE_FILE"
 chmod 0600 "$MAINTENANCE_FILE"
 stop_bridge
@@ -170,6 +172,12 @@ set_perm "$MODPATH/uninstall.sh" 0 0 0755
 set_perm "$MODPATH/lib/common.sh" 0 0 0755
 set_perm "$ZSTD" 0 0 0755
 
+# A prior uninstall deliberately leaves disabled+uninstalled markers to stop
+# races with the old supervisor. Clear them only after a complete reinstall;
+# ordinary upgrades preserve an intentional user-disabled state.
+if [ "$reinstall_after_uninstall" = true ]; then
+  rm -f "$DISABLED_FILE" "$UNINSTALLED_FILE"
+fi
 # Publish completion last. If the installer is killed or aborts after entering
 # maintenance, the runtime stays fail-closed instead of starting a partial tree.
 rm -f "$MAINTENANCE_FILE"

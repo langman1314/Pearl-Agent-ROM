@@ -10,6 +10,7 @@ PID_FILE="$RUN_DIR/hermes-bridge.pid"
 SUPERVISOR_PID_FILE="$RUN_DIR/supervisor.pid"
 DISABLED_FILE="$STATE_ROOT/disabled"
 MAINTENANCE_FILE="$STATE_ROOT/maintenance"
+UNINSTALLED_FILE="$STATE_ROOT/uninstalled"
 MCP_TOKEN_FILE="$DATA_ROOT/config/mcp-token"
 SUPERVISOR_LOG="$LOG_DIR/supervisor.log"
 

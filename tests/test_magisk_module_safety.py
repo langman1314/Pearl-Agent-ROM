@@ -14,8 +14,10 @@ def text(name: str) -> str:
 
 
 class UpgradeMaintenanceSafetyTest(unittest.TestCase):
-    def test_common_declares_maintenance_marker(self) -> None:
-        self.assertIn('MAINTENANCE_FILE="$STATE_ROOT/maintenance"', text("lib/common.sh"))
+    def test_common_declares_lifecycle_markers(self) -> None:
+        common = text("lib/common.sh")
+        self.assertIn('MAINTENANCE_FILE="$STATE_ROOT/maintenance"', common)
+        self.assertIn('UNINSTALLED_FILE="$STATE_ROOT/uninstalled"', common)
 
     def test_installer_quiesces_before_stop_and_clears_last(self) -> None:
         script = text("customize.sh")
@@ -63,6 +65,29 @@ class UpgradeMaintenanceSafetyTest(unittest.TestCase):
         marker_check = action.index('[ -f "$MAINTENANCE_FILE" ]', enable)
         clear_disabled = action.index('rm -f "$DISABLED_FILE"', enable)
         self.assertLess(marker_check, clear_disabled)
+
+    def test_uninstall_cleanup_and_reinstall_semantics(self) -> None:
+        uninstall = text("uninstall.sh")
+        mark_disabled = uninstall.index('touch "$DISABLED_FILE" "$UNINSTALLED_FILE"')
+        stop = uninstall.index("stop_bridge", mark_disabled)
+        cleanup = uninstall.index('rm -rf "$ROOTFS"', stop)
+        self.assertLess(mark_disabled, stop)
+        self.assertLess(stop, cleanup)
+        self.assertIn('"$STATE_ROOT"/rootfs.failed.mount.*', uninstall)
+        self.assertIn('"$STATE_ROOT"/rootfs.failed.action.*', uninstall)
+        self.assertNotIn('rm -rf "$DATA_ROOT"', uninstall)
+
+        installer = text("customize.sh")
+        remember = installer.index('[ -f "$UNINSTALLED_FILE" ]')
+        enter = installer.index('touch "$MAINTENANCE_FILE"')
+        permissions = installer.index("set_perm_recursive")
+        reinstall_clear = installer.index(
+            'rm -f "$DISABLED_FILE" "$UNINSTALLED_FILE"', permissions
+        )
+        leave = installer.index('rm -f "$MAINTENANCE_FILE"', reinstall_clear)
+        self.assertLess(remember, enter)
+        self.assertLess(permissions, reinstall_clear)
+        self.assertLess(reinstall_clear, leave)
 
 
 class PayloadRejectionSafetyTest(unittest.TestCase):
