@@ -1,115 +1,64 @@
+diff --git a/CaseSensitiveInfo.h b/CaseSensitiveInfo.h
+index 4d8b1a7..39252b3 100644
 --- a/CaseSensitiveInfo.h
 +++ b/CaseSensitiveInfo.h
-@@ -115,12 +115,13 @@
- #include <lmcons.h>
- #include <fileapi.h>
- 
+@@ -117,0 +118 @@ quit:
 +#ifndef FILE_CS_FLAG_CASE_SENSITIVE_DIR
- typedef struct _FILE_CASE_SENSITIVE_INFO {
-     ULONG Flags;
- } FILE_CASE_SENSITIVE_INFO, *PFILE_CASE_SENSITIVE_INFO;
- 
- #define FILE_CS_FLAG_CASE_SENSITIVE_DIR 0x00000001
+@@ -123 +124 @@ typedef struct _FILE_CASE_SENSITIVE_INFO {
 -#define FileCaseSensitiveInfo 71 // This value is typically 71
 +#endif
- 
- static char __win_strerror_buf[64 * 1024 - 1];
- 
-@@ -129,9 +130,9 @@
-  *@param winerr
- */
- static const char *win_strerror(DWORD winerr) {
+@@ -132,3 +133,3 @@ static const char *win_strerror(DWORD winerr) {
 -    if (!FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL,
 -                       winerr, MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US),
 -                       (LPWSTR)__win_strerror_buf, sizeof(__win_strerror_buf), NULL)) {
 +    if (!FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, NULL,
 +                        winerr, MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US),
 +                        __win_strerror_buf, sizeof(__win_strerror_buf), NULL)) {
- #ifndef NDEBUG
-         LOGE("FormatMessage for WinError %ld failed (WinError %ld)", winerr, GetLastError());
- #endif
-@@ -175,8 +176,8 @@
-         ret = -1;
- 
-         // owner and group info are required for the AccessCheck below
+@@ -178,2 +179,2 @@ static int EnsurePathAccess(const char *path, DWORD access) {
 -        if ((winerr = GetNamedSecurityInfo((LPCWSTR)path, SE_FILE_OBJECT,
 -                                           OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION |
 +        if ((winerr = GetNamedSecurityInfoA(path, SE_FILE_OBJECT,
 +                                            OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION |
-                                            DACL_SECURITY_INFORMATION, NULL, NULL, &oldDacl, NULL, (void **) &sd))) {
-             SetLastError(winerr);
- 
-@@ -186,7 +187,7 @@
-             break;
-         }
- 
+@@ -189 +190 @@ static int EnsurePathAccess(const char *path, DWORD access) {
 -        BuildExplicitAccessWithName(&ea, (LPWSTR)userBuff, access, GRANT_ACCESS, SUB_CONTAINERS_AND_OBJECTS_INHERIT);
 +        BuildExplicitAccessWithNameA(&ea, userBuff, access, GRANT_ACCESS, SUB_CONTAINERS_AND_OBJECTS_INHERIT);
- 
-         // next, check if our process already have the requested permission
-         if (!AccessCheck(sd, hToken, access, &_mapping, &_privs, &_priv_size, &_granted, &status)) {
-@@ -201,7 +202,7 @@
-         }  // already has the permission, skip
-         // merge with the old DACL
- 
+@@ -204 +205 @@ static int EnsurePathAccess(const char *path, DWORD access) {
 -        if ((winerr = SetEntriesInAcl(1, &ea, oldDacl, &newDacl))) {
 +        if ((winerr = SetEntriesInAclA(1, &ea, oldDacl, &newDacl))) {
-             SetLastError(winerr);
- 
- #ifndef NDEBUG
-@@ -211,8 +212,8 @@
-             break;
-         }
- 
+@@ -214,2 +215,2 @@ static int EnsurePathAccess(const char *path, DWORD access) {
 -        if ((winerr = SetNamedSecurityInfo((LPWSTR)pathBuff, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, NULL, NULL, newDacl,
 -                                           NULL))) {
 +        if ((winerr = SetNamedSecurityInfoA(pathBuff, SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, NULL, NULL, newDacl,
 +                                            NULL))) {
-             SetLastError(winerr);
- 
- #ifndef NDEBUG
-@@ -241,7 +242,7 @@
- __attribute__((constructor)) static void __init_creds(void) {
-     DWORD dw = sizeof(userBuff);
- 
+@@ -244 +245 @@ __attribute__((constructor)) static void __init_creds(void) {
 -    if (!GetUserName((LPWSTR)userBuff, &dw)) {
 +    if (!GetUserNameA(userBuff, &dw)) {
-         LOGE("GetUserName failed: %s", win_strerror(GetLastError()));
- 
-         assert(0);
-@@ -286,7 +287,7 @@
-     HANDLE h;
-     int fd;
- 
+@@ -289 +290 @@ static int __open_dir_fd(const char *path, DWORD access, DWORD share_mode, int f
 -    if ((h = CreateFile((LPCWSTR)path, access, share_mode, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL)) ==
 +    if ((h = CreateFileA(path, access, share_mode, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL)) ==
-         INVALID_HANDLE_VALUE)
-         return -1;
- 
+diff --git a/ExtractHelper.cpp b/ExtractHelper.cpp
+index 7b8a278..387ebc3 100644
 --- a/ExtractHelper.cpp
 +++ b/ExtractHelper.cpp
-@@ -231,7 +231,11 @@
-             /* the last lcluster can be divided into 3 parts */
-             if (map.m_la + map.m_llen > inode->i_size)
-                 map.m_llen = inode->i_size - map.m_la;
--
-+
-+            /* Preserve unmapped logical holes instead of collapsing them. */
-+            if (outfd >= 0 && lseek(outfd, map.m_la, SEEK_SET) < 0)
-+                goto fail_eio;
-+
-             pos += map.m_llen;
--
-+
-             /* should skip decomp? */
-@@ -294,6 +299,9 @@
-                 } while (map.m_llen);
-             }
-         }
-+
-+        if (outfd >= 0 && ftruncate(outfd, inode->i_size) < 0)
-+            goto fail_eio;
--
-+
-     out:
-         if (raw)
+@@ -217,6 +217,2 @@ namespace skkk {
+-            if (compressed)
+-                ret = z_erofs_map_blocks_iter(inode, &map,
+-                                              EROFS_GET_BLOCKS_FIEMAP);
+-            else
+-                ret = erofs_map_blocks(inode, &map,
+-                                       EROFS_GET_BLOCKS_FIEMAP);
++            ret = erofs_map_blocks(inode, &map,
++                                   EROFS_GET_BLOCKS_FIEMAP);
+@@ -237,2 +233,2 @@ namespace skkk {
+-            /* should skip decomp? */
+-            if (!(map.m_flags & EROFS_MAP_MAPPED) || !eo->check_decomp)
++            /* Match official fsck.erofs: preserve unmapped logical holes. */
++            if (!eo->check_decomp)
+@@ -239,0 +236,7 @@ namespace skkk {
++            if (!(map.m_flags & EROFS_MAP_MAPPED)) {
++                if (outfd >= 0 && lseek(outfd, map.m_llen, SEEK_CUR) < 0) {
++                    ret = -errno;
++                    goto out;
++                }
++                continue;
++            }
