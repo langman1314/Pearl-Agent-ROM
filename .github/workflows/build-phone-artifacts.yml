@@ -84,17 +84,19 @@ jobs:
           cp -a .tools/zstd-source .tools/zstd-build-a
           cp -a .tools/zstd-source .tools/zstd-build-b
           for tree in .tools/zstd-build-a .tools/zstd-build-b; do
+            source_root="$PWD/$tree"
             make -C "$tree/programs" -j2 zstd-release \
               CC=aarch64-linux-gnu-gcc \
               AR=aarch64-linux-gnu-ar \
               RANLIB=aarch64-linux-gnu-ranlib \
               HAVE_ZLIB=0 HAVE_LZMA=0 HAVE_LZ4=0 \
-              CFLAGS='-O2 -fno-ident' \
+              CFLAGS="-O2 -fno-ident -ffile-prefix-map=$source_root=/usr/src/zstd -fdebug-prefix-map=$source_root=/usr/src/zstd -fmacro-prefix-map=$source_root=/usr/src/zstd" \
               LDFLAGS='-static -Wl,--build-id=none'
           done
 
           hash_a="$(sha256sum .tools/zstd-build-a/programs/zstd | awk '{print $1}')"
           hash_b="$(sha256sum .tools/zstd-build-b/programs/zstd | awk '{print $1}')"
+          printf 'zstd build A: %s\nzstd build B: %s\n' "$hash_a" "$hash_b"
           test "$hash_a" = "$hash_b"
           file .tools/zstd-build-a/programs/zstd \
             | grep -Eqi 'ELF 64-bit LSB.*(ARM aarch64|ARM64).*(statically linked|static-pie linked)'
