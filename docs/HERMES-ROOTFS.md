@@ -11,9 +11,9 @@
 | Hermes package version | `0.20.6` |
 | MCP SDK | `2.0.0`，由 Hermes `uv.lock` 固定 |
 | Pearl Hermes Bridge | `0.1.0` |
-| uv bootstrap | `0.8.11` / ARM64 wheel SHA-256 `0a7fcbe71cc5402b7c3d4c381f9b970a455d8ccc2a43ee2ce5ac2b617ec0534c` |
+| uv bootstrap | `0.12.7` / ARM64 wheel SHA-256 `56a5730f8eff477501b3276a0059c2c2843302d5d4a6cc10f993a5cd66ddace8` |
 
-选择 Bookworm 是为了使用发行版原生 Python 3.11；Hermes 官方要求 Python `>=3.11,<3.14`。构建过程中必须使用 Hermes 上游仓库的 `uv.lock --frozen`，禁止无锁解析依赖。
+选择 Bookworm 是为了使用发行版原生 Python 3.11；Hermes 官方要求 Python `>=3.11,<3.14`。构建过程中必须使用 Hermes 上游仓库的 `uv.lock --frozen`，禁止无锁解析依赖。`uv 0.12.7` 是固定 Hermes commit（2026-08-29）之前最近的正式版本（2026-08-27），并已用 `uv lock --check --offline` 验证可解析该仓库的 revision-3 lock；旧的 `0.8.11` 不支持其 `exclude-newer-span`/per-package boolean 格式。
 
 ## 主机构建要求
 
