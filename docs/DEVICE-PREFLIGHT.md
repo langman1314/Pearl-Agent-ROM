@@ -70,7 +70,9 @@ Human review must reconcile ADB and fastboot captures and prove:
 6. fastboot/recovery access survives an Android boot failure;
 7. anti-rollback information does not contradict the proposed official baseline.
 
-This collector does not perform item 5 because partition-content acquisition needs separate root/recovery review. It also never authorizes flashing by itself.
+For bootloaders that implement Android platform-tools' read-only `fetch`, the separately tested `scripts/backup-device-boot-chain.sh` can acquire `boot_a`, `boot_b`, `vbmeta_a` and `vbmeta_b`. It repeats product/slot/unlocked/has-slot/size gates, validates exact byte counts plus `ANDROID!`/`AVB0` headers, hashes every output and atomically publishes a new directory. Its command allowlist is only `devices`, `getvar` and `fetch`; it never reboots or mutates a slot. If the bootloader rejects `fetch`, stop and use a separately approved root/recovery read-only path—never substitute flashing or the historical patched image.
+
+Neither collector nor backup script authorizes flashing by itself.
 
 ## Absolute stop conditions
 
