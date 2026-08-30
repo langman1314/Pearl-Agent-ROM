@@ -96,6 +96,10 @@ if find "$stage" -type f | grep -Eqi '(^|/)(boot|init_boot|vendor_boot|recovery|
   rm -rf "$stage"
   abort "! Extracted rootfs contains a forbidden Android partition payload"
 fi
+if find "$stage" -type f | grep -Eqi '(^|/)(flash_all[^/]*|flash[^/]*preloader[^/]*|fastboot[^/]*)\.(bat|cmd|sh|py)$'; then
+  rm -rf "$stage"
+  abort "! Extracted rootfs contains a forbidden firmware flashing script"
+fi
 
 [ -x "$stage/usr/local/sbin/pearl-hermes-bridge-wrapper" ] || {
   rm -rf "$stage"

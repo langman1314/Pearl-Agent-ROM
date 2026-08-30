@@ -59,7 +59,7 @@ No Android application partition is mounted into the chroot. The Hermes terminal
 - generates a 256-bit MCP Bearer token from `/dev/urandom`, stored only as `0600` under persistent data;
 - runs zstd integrity validation before extraction;
 - stops/unmounts an old runtime and removes orphan `rootfs.new.*` stages before creating a new stage;
-- re-scans the extracted tree and rejects Android partition, GPT, and bootloader image payloads on-device;
+- re-scans the extracted tree and rejects Android partition, GPT, bootloader image payloads and known firmware/preloader/fastboot flashing-script names on-device;
 - checks the extracted Hermes commit against `a2e19d484cb5591df8dafe667c93345b62d9bf06`;
 - provisions a non-secret DeepSeek `config.yaml` only when absent and preserves user edits on upgrades;
 - extracts into `rootfs.new.<pid>`;
@@ -96,7 +96,7 @@ scripts/build-magisk-module.sh \
   --zstd-sha256 <independently-verified-64-hex-hash>
 ```
 
-The output ZIP and SHA-256 sidecar are generated under gitignored `artifacts/magisk/`. The assembler rejects a non-ARM64/dynamic decoder, mismatched rootfs/hash, corrupt zstd, missing module files, and partition-image filenames both in the module ZIP and inside the rootfs archive.
+The output ZIP and SHA-256 sidecar are generated under gitignored `artifacts/magisk/`. The assembler rejects a non-ARM64/dynamic decoder, mismatched rootfs/hash, corrupt zstd, missing module files, partition-image filenames and known firmware/preloader/fastboot flashing-script names both in the module ZIP and inside the rootfs archive.
 
 Without local Linux/WSL, run the manually triggered GitHub workflow `.github/workflows/build-phone-artifacts.yml`. It has read-only repository permission, pins every GitHub Action/source commit plus an immutable Ubuntu apt snapshot, builds static ARM64 zstd twice and requires identical hashes with no ELF `INTERP`, builds the Debian rootfs/module, and uploads all binaries plus package/provenance/hash manifests for 14 days. Generated binaries remain outside Git.
 
@@ -105,7 +105,7 @@ Without local Linux/WSL, run the manually triggered GitHub workflow `.github/wor
 Before installation:
 
 - confirm target Magisk source/version and patched-boot provenance;
-- validate Android 16 SELinux behavior for `chroot`, mounts, loopback network, and DNS;
+- validate official Android 15 `OS3.0.3.0.VLHCNXM` SELinux behavior for `chroot`, mounts, loopback network, DNS and the private devpts instance;
 - validate idle RAM, CPU, temperature, restart fuse, and Doze behavior;
 - provision DeepSeek credentials without logging them;
 - validate Nexus can enumerate the five MCP tools over `127.0.0.1:51338/mcp`;
