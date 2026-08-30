@@ -1,32 +1,73 @@
-# Boot 镜像离线验证
+# Boot image validation and patch gate
 
-验证日期：2026-09-16。
+## Approved stock input
 
-| 镜像 | 主机路径 | 字节数 | SHA-256 | Boot header | AVB footer |
-|---|---|---:|---|---|---|
-| 原始 boot | `D:\生活问答\rom-extract\images\boot.img` | `67108864` | `8526d0ff63b6606f4ccda6381f61921e6a56c3bcdd7fa0ace05578863f9a6f82` | `ANDROID!` / v4 | `AVBf` |
-| Magisk patched boot | `D:\生活问答\magisk-patch\magisk_patched_OS3.0.310.0.img` | `67108864` | `2024bdb03ea95556774471f4cca348bd499de753aa4a7d859dfb8d5485bc8e73` | `ANDROID!` / v4 | `AVBf` |
+The sole boot patch input is the exact official fastboot baseline file:
 
-## 结论
+| Field | Value |
+|---|---|
+| package | `OS3.0.3.0.VLHCNXM` official pearl fastboot |
+| archive SHA-256 | `99e166422be4bd17237df9b70030b5f0ff1871d7b7bd858cbb62b683f070ea64` |
+| member | `images/boot.img` |
+| bytes | `67,108,864` |
+| boot SHA-256 | `8526d0ff63b6606f4ccda6381f61921e6a56c3bcdd7fa0ace05578863f9a6f82` |
+| header | `ANDROID!`, boot header v4 |
+| AVB | footer, SHA256_RSA2048 vbmeta and 21,045,248-byte boot hash all verified |
 
-- 修补镜像和原始镜像均为 64 MiB，分区容量匹配。
-- 二者均为 Android boot header v4，且末尾保留 AVB footer。
-- stock boot 的 footer、SHA256_RSA2048 vbmeta struct 和 boot hash descriptor 已由 AOSP avbtool 验证成功。
-- patched boot 来自该 stock boot：ramdisk 记录的 SHA-1 精确匹配输入，内嵌 `magisk` 与 `magiskinit` 逐字节匹配官方 Magisk 30.7 Release。
-- patched boot 把内嵌 vbmeta flags 从 0 改为 3，但没有重新签名；把实验副本 flags 还原为 0 后 RSA 恢复、boot hash descriptor 随即明确失败。
-- 因此“保留 AVB footer”不等于 AVB 自洽；当前 patched boot 仍是 **NO FLASH**。
+The complete official top-level/chained AVB graph, including all logical hashtrees, also passes. See `docs/OFFICIAL-PEARL-BASELINE.md`.
 
-完整 chain、flags 证明与 ROM 混合来源见 `docs/AVB-CHAIN.md`；Magisk/Vector 来源见 `docs/PLATFORM-PROVENANCE.md`。
+## Historical patched image is rejected
 
-## 尚未完成的门禁
+A historical Magisk 30.7 experiment produced a 67,108,864-byte image with SHA-256:
 
-这份记录**不是刷入许可**。实机刷入前仍需：
+`2024bdb03ea95556774471f4cca348bd499de753aa4a7d859dfb8d5485bc8e73`
 
-1. 使用官方 Magisk 30.7 同版本 `magiskboot` 再执行一次工具级 unpack/repack 验证；
-2. 从 `super.zst` 只读副本提取 logical partitions，完成所有 AVB hashtree 验证；
-3. 从真机当前槽导出 boot/vbmeta 链并核对 SHA-256；
-4. 仅测试 active slot，另一槽保留 stock boot；
-5. 准备可独立执行的 stock boot 回滚脚本与官方 pearl 救砖包；
-6. 禁止运行上游会刷写 `preloader1/2` 的 `flashl.bat`。
+Its extracted ramdisk lineage and embedded `magisk`/`magiskinit` matched the stock input and official Magisk 30.7 binaries. However:
 
-镜像文件由 `.gitignore` 排除，只提交哈希与验证记录。
+- it was created before the official recovery baseline and process gates were established;
+- embedded vbmeta flags changed from `0` to `3` without a new trusted signature;
+- restoring flags to `0` makes RSA verification return but the boot hash descriptor fails, as expected for changed ramdisk bytes;
+- preserving an `AVBf` footer is not proof of AVB consistency;
+- no target-device slot/rollback acceptance was performed.
+
+This image is retained only as audit evidence. It is not a release artifact and must never be flashed. Final work must regenerate a patch from a fresh hash-checked copy of the official boot through the controlled procedure below.
+
+## Controlled patch procedure gate
+
+A final patched boot may be generated only after the physical device report passes. The procedure must then:
+
+1. copy the exact official boot by hash into a clean staging directory;
+2. use the approved official Magisk 30.7 APK/binaries whose source, release asset and signatures/hashes are recorded;
+3. patch on the target device or an equivalently validated ARM64 Magisk environment without supplying a foreign vbmeta image;
+4. pull the result without renaming it over stock, record size and SHA-256, and preserve the unmodified stock image beside it;
+5. unpack stock and patched images with the same pinned `magiskboot` and record component hashes/diff scope;
+6. prove kernel, bootconfig/header geometry and partition size remain compatible;
+7. inspect embedded vbmeta/footer behavior explicitly and never describe flags=3 as signed AVB;
+8. test only through the device-specific slot/rollback plan approved from actual fastboot variables.
+
+## Device-derived prerequisites
+
+Before any `fastboot boot` or `fastboot flash` command is even generated, collect read-only evidence for:
+
+- `ro.product.device`, vendor/system device, fingerprint and build version;
+- bootloader unlocked/secure state;
+- `current-slot`, slot count and `has-slot:boot`/`has-slot:vbmeta` where exposed;
+- actual `/dev/block/by-name` boot/vbmeta mapping;
+- hashes and external backups of every available stock boot/vbmeta slot;
+- anti-rollback variables where exposed;
+- working recovery/fastboot access independent of Android userspace.
+
+Do not assume the slot semantics from Xiaomi's flash scripts: those scripts erase or flash `boot_ab`, metadata/userdata and preloader-related targets and are prohibited.
+
+## Rollback gate
+
+The first boot experiment requires a separately reviewed rollback procedure that:
+
+- references stock image files only by approved SHA-256;
+- validates device product and partition/slot variables before mutation;
+- never flashes efuse, preloader, super or vbmeta as a side effect;
+- stops on any missing/ambiguous variable;
+- records every proposed command before execution;
+- can restore stock boot from fastboot/recovery if Android does not start.
+
+Current status remains **NO FLASH**. No final patched boot exists yet.
