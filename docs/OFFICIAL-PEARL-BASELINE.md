@@ -75,7 +75,7 @@ tracker 是社区维护的官方 OTA/Fastboot URL 索引，不是 Xiaomi 的签�
 
 该 canonical LF manifest 已跟踪为 `manifests/official-pearl-logical.sha256`，并逐行对 8 个严格提取镜像重新计算验证。
 
-固定 AOSP avbtool commit `c5066a96caa7bf4150c0a8cc8cc14ab81733fdc7` 在 portable MSYS2/POSIX 下执行 `verify_image --follow_chain_partitions`，完整通过 15 项：top-level vbmeta；chained boot/footer/hash；vbmeta_system 与 product/system/system_ext hashtrees；vbmeta_vendor 与 vendor hashtree；dtbo/vendor_boot hashes；mi_ext/odm/odm_dlkm/vendor_dlkm hashtrees。顶层和 child vbmeta 使用同一 public-key SHA-1 `b2a02f1e56e366d727a1a8e089762fe0b91bbc84`，顶层 flags 为 `0`。
+固定 AOSP avbtool commit `c5066a96caa7bf4150c0a8cc8cc14ab81733fdc7` 在 portable MSYS2/POSIX 下执行 `verify_image --follow_chain_partitions`，完整通过 15 项：top-level vbmeta；chained boot/footer/hash；vbmeta_system 与 product/system/system_ext hashtrees；vbmeta_vendor 与 vendor hashtree；dtbo/vendor_boot hashes；mi_ext/odm/odm_dlkm/vendor_dlkm hashtrees。顶层和 child vbmeta 使用同一 public-key SHA-1 `b2a02f1e56e366d727a1a8e089762fe0b91bbc84`，顶层 flags 为 `0`。精确输出已跟踪为 `manifests/official-pearl-avb.verify.txt`。输出里的 `not specified` 表示调用方没有另传 `--expected_chain_partition`；在 follow 递归中，固定 avbtool 仍把每个 child embedded key 与父 descriptor 的 `public_key` 逐字节比较，不是跳过 chain key 验证。
 
 因此官方包的下载 provenance、archive 完整性与完整 AVB chain 三层门禁均已通过；真机设备身份、rollback 和安装门禁仍未通过，状态继续 **NO FLASH**。
 
@@ -91,7 +91,7 @@ tracker 是社区维护的官方 OTA/Fastboot URL 索引，不是 Xiaomi 的签�
 
 ## 剩余门禁
 
-- 把已经完成的官方 flash-script 风险审计转化为项目自己的保守 installer/recovery 命令，绝不复用原脚本；
-- 完成第三方输入包与官方基线的弃用清单，确保 final payload 不再依赖第三方 logical partitions；
-- 在真机只读导出当前槽 identity/boot/vbmeta，完成 slot/rollback/recovery 演练；
-- 在上述条件满足后才允许生成或刷入 patched boot。
+- 在真机运行已完成的 read-only preflight collector，取得实际 identity/slot/lock/partition-size evidence；
+- 通过另行审核的 root/recovery 只读流程导出并双重备份当前 boot/vbmeta，完成 rollback/recovery 演练；
+- 完成当前 HEAD phone artifact CI、manifest 下载复验，以及 Magisk/Vector Android 15 真机兼容性；
+- 在上述条件满足后才允许从 fresh official boot 生成 patched boot；生成不代表允许刷入。

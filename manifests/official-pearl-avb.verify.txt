@@ -1,0 +1,25 @@
+Verifying image vbmeta.img using embedded public key
+vbmeta: Successfully verified SHA256_RSA2048 vbmeta struct in vbmeta.img
+boot: Chained but ROLLBACK_SLOT (which is 3) and KEY (which has sha1 b2a02f1e56e366d727a1a8e089762fe0b91bbc84) not specified
+--
+Verifying image boot.img using embedded public key
+vbmeta: Successfully verified footer and SHA256_RSA2048 vbmeta struct in boot.img
+boot: Successfully verified sha256 hash of boot.img for image of 21045248 bytes
+vbmeta_system: Chained but ROLLBACK_SLOT (which is 2) and KEY (which has sha1 b2a02f1e56e366d727a1a8e089762fe0b91bbc84) not specified
+--
+Verifying image vbmeta_system.img using embedded public key
+vbmeta: Successfully verified SHA256_RSA2048 vbmeta struct in vbmeta_system.img
+product: Successfully verified sha256 hashtree of product.img for image of 4527869952 bytes
+system: Successfully verified sha256 hashtree of system.img for image of 819441664 bytes
+system_ext: Successfully verified sha256 hashtree of system_ext.img for image of 897777664 bytes
+vbmeta_vendor: Chained but ROLLBACK_SLOT (which is 4) and KEY (which has sha1 b2a02f1e56e366d727a1a8e089762fe0b91bbc84) not specified
+--
+Verifying image vbmeta_vendor.img using embedded public key
+vbmeta: Successfully verified SHA256_RSA2048 vbmeta struct in vbmeta_vendor.img
+vendor: Successfully verified sha256 hashtree of vendor.img for image of 1972944896 bytes
+dtbo: Successfully verified sha256 hash of dtbo.img for image of 81056 bytes
+vendor_boot: Successfully verified sha256 hash of vendor_boot.img for image of 41066496 bytes
+mi_ext: Successfully verified sha256 hashtree of mi_ext.img for image of 139264 bytes
+odm: Successfully verified sha256 hashtree of odm.img for image of 1019904 bytes
+odm_dlkm: Successfully verified sha256 hashtree of odm_dlkm.img for image of 20480 bytes
+vendor_dlkm: Successfully verified sha256 hashtree of vendor_dlkm.img for image of 18870272 bytes
