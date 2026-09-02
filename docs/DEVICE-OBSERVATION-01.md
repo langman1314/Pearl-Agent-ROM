@@ -84,6 +84,20 @@ No output image was published, all temporary host files were removed, and no dev
 
 This closes the standard fastboot-readback route. Current boot/vbmeta backups now require a separately built and reviewed ephemeral read-only recovery/ramdisk or another provenance-controlled acquisition mechanism. The project must not substitute a flash operation, an unknown recovery image, the historical Magisk patch or an unreviewed MediaTek tool.
 
+## Temporary official Magisk boot attempt
+
+After the exact official patch passed independent reproduction and structural audit, the user authorized a non-flashing `fastboot boot` attempt. The bootloader accepted transfer of the 64 MiB image but rejected the boot operation before starting it:
+
+```text
+Sending 'boot.img' (65536 KB) OKAY
+Booting FAILED (remote: 'unknown command')
+fastboot: error: Command failed
+```
+
+The command was not `fastboot flash`; no boot or vbmeta slot was written. The device was returned with the pre-authorized `fastboot reboot`. Android then returned with slot suffix `_a`, verified boot state `orange`, and an ordinary `uid=2000 (shell)` ADB session. This closes both standard fastboot acquisition paths on this bootloader: `fetch` and `boot` are unavailable.
+
+The freshly generated patch remains a host-only artifact and is not approved for flashing. A current boot/vbmeta backup therefore still requires a separately built and reviewed ephemeral read-only recovery/ramdisk or another provenance-controlled acquisition mechanism.
+
 ## Gate decision
 
 Passed:
