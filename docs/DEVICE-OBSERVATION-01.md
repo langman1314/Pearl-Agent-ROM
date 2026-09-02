@@ -72,6 +72,18 @@ Observed values:
 
 Unsuffixed boot/vbmeta size values were empty, matching the Android-observed absence of unsuffixed by-name entries. The active slot and partition geometry now agree across Android and fastboot. After collection, the only state-changing command was the pre-authorized `fastboot reboot`; Android and authorized ADB returned successfully. No partition read, flash, erase, unlock, format or slot change occurred.
 
+## Read-only partition backup attempt
+
+After mocked validation of `scripts/backup-device-boot-chain.sh`, the phone was manually returned to fastboot and the script attempted its first allowlisted `fetch boot_a`. The bootloader rejected it before transferring data. One direct read-only retry produced the conclusive platform-tools error:
+
+```text
+fastboot: error: Unable to get max-fetch-size. Device does not support fetch command.
+```
+
+No output image was published, all temporary host files were removed, and no device mutation command ran. The phone was then returned to Android with `fastboot reboot`.
+
+This closes the standard fastboot-readback route. Current boot/vbmeta backups now require a separately built and reviewed ephemeral read-only recovery/ramdisk or another provenance-controlled acquisition mechanism. The project must not substitute a flash operation, an unknown recovery image, the historical Magisk patch or an unreviewed MediaTek tool.
+
 ## Gate decision
 
 Passed:
