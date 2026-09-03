@@ -43,6 +43,8 @@ The supplied `super.zst` was:
 
 No executable from the third-party ROM ZIP was run.
 
+Host acceptance has passed: the full staging manifest rehashed successfully; the fixed carrier script processed all real 7.2 GB staging files and complete mocked pearl geometry in dry-run mode; both real Magisk/stock boot artifacts passed their dry runs; and the real Nexus/Vector/Hermes set passed the post-root dry run. Repository regressions cover dry-run non-mutation, exact acknowledgements, allowlists and failure boundaries. The remaining pre-flash gate is the same carrier dry run against the physical phone's live fastboot variables.
+
 ## Staged installation
 
 ### Phase A — stock-boot carrier
