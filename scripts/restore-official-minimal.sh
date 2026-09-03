@@ -102,7 +102,8 @@ anti="$(getvar anti)"; [[ "$anti" =~ ^[0-9]+$ && "$anti" -le 1 ]] || { echo "Off
 for p in boot vendor_boot dtbo vbmeta vbmeta_system vbmeta_vendor; do [[ "$(getvar has-slot:$p)" == yes ]] || { echo "Missing A/B partition: $p" >&2; exit 1; }; done
 [[ "$(getvar has-slot:cust)" == no ]] || { echo 'Expected unslotted cust partition' >&2; exit 1; }
 boot_size="$(getvar partition-size:boot_a)"; vbmeta_size="$(getvar partition-size:vbmeta_a)"
-[[ "${boot_size,,}" == 0x4000000 && "${vbmeta_size,,}" == 0x800000 ]] || { echo 'Unexpected boot/vbmeta capacity' >&2; exit 1; }
+capacity_equals() { local raw="${1#0x}"; raw="${raw#0X}"; [[ "$raw" =~ ^[0-9a-fA-F]+$ ]] || return 1; ((16#$raw == $2)); }
+capacity_equals "$boot_size" 67108864 && capacity_equals "$vbmeta_size" 8388608 || { echo 'Unexpected boot/vbmeta capacity' >&2; exit 1; }
 capacity_at_least() { local raw="${1#0x}"; raw="${raw#0X}"; [[ "$raw" =~ ^[0-9a-fA-F]+$ ]] && ((16#$raw >= $2)); }
 capacity_at_least "$(getvar partition-size:super)" "$EXPECTED_SUPER_BYTES" || { echo 'super partition is too small' >&2; exit 1; }
 capacity_at_least "$(getvar partition-size:cust)" "$EXPECTED_CUST_BYTES" || { echo 'cust partition is too small' >&2; exit 1; }

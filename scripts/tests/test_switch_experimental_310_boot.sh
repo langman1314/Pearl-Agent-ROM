@@ -23,7 +23,7 @@ if [[ "${1:-}" == devices ]]; then printf 'PEARL123\tfastboot\n'; exit 0; fi
 [[ "${1:-}" == -s ]] && shift 2
 if [[ "${1:-}" == getvar ]]; then
  case "${2:-}" in
-  product) v=pearl;; unlocked) v=yes;; current-slot) v=a;; partition-size:boot_a) v=0x4000000;; *) exit 1;;
+  product) v=pearl;; unlocked) v=yes;; current-slot) v=a;; partition-size:boot_a) v=4000000;; *) exit 1;;
  esac
  printf '%s: %s\n' "$2" "$v" >&2
 fi

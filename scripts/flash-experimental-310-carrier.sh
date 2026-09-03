@@ -151,6 +151,7 @@ getvar() {
 product="$(getvar product)"
 unlocked="$(getvar unlocked)"
 anti="$(getvar anti)"
+current_slot="$(getvar current-slot)"
 slot_count="$(getvar slot-count)"
 has_boot="$(getvar has-slot:boot)"
 has_vbmeta="$(getvar has-slot:vbmeta)"
@@ -160,10 +161,16 @@ super_size="$(getvar partition-size:super)"
 [[ "$product" == pearl ]] || { echo "Refusing product: $product" >&2; exit 1; }
 [[ "$unlocked" == yes ]] || { echo "Bootloader is not unlocked" >&2; exit 1; }
 [[ "$anti" =~ ^[0-9]+$ && "$anti" -le 1 ]] || { echo "Anti-rollback value rejected: $anti" >&2; exit 1; }
-[[ "$slot_count" == 2 && "$has_boot" == yes && "$has_vbmeta" == yes ]] || {
+[[ "$slot_count" == 2 && "$current_slot" == a && "$has_boot" == yes && "$has_vbmeta" == yes ]] || {
   echo "Unexpected A/B geometry" >&2; exit 1;
 }
-[[ "${boot_size,,}" == 0x4000000 && "${vbmeta_size,,}" == 0x800000 ]] || {
+capacity_equals() {
+  local raw="${1#0x}"
+  raw="${raw#0X}"
+  [[ "$raw" =~ ^[0-9a-fA-F]+$ ]] || return 1
+  ((16#$raw == $2))
+}
+capacity_equals "$boot_size" 67108864 && capacity_equals "$vbmeta_size" 8388608 || {
   echo "Unexpected boot/vbmeta capacity" >&2; exit 1;
 }
 super_hex="${super_size#0x}"; super_hex="${super_hex#0X}"

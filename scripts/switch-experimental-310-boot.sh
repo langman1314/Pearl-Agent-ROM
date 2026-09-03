@@ -74,7 +74,13 @@ getvar() {
 [[ "$(getvar unlocked)" == yes ]] || { echo "Bootloader is not unlocked" >&2; exit 1; }
 [[ "$(getvar current-slot)" == a ]] || { echo "Carrier boot switch requires active slot A" >&2; exit 1; }
 boot_size="$(getvar partition-size:boot_a)"
-[[ "${boot_size,,}" == 0x4000000 ]] || { echo "Unexpected boot_a capacity" >&2; exit 1; }
+capacity_equals() {
+  local raw="${1#0x}"
+  raw="${raw#0X}"
+  [[ "$raw" =~ ^[0-9a-fA-F]+$ ]] || return 1
+  ((16#$raw == $2))
+}
+capacity_equals "$boot_size" 67108864 || { echo "Unexpected boot_a capacity" >&2; exit 1; }
 printf 'mode=%s image_sha256=%s\n' "$MODE" "$actual"
 printf '  fastboot flash boot_a images/%s\n' "$(basename "$image")"
 printf '  fastboot set_active a\n'

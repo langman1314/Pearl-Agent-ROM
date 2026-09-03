@@ -36,7 +36,7 @@ if [[ "${1:-}" == getvar ]]; then
  case "${2:-}" in
  product) v=pearl;; unlocked) v=yes;; anti) v=1;; current-slot) v=a;; slot-count) v=2;;
  has-slot:cust) v=no;; has-slot:*) v=yes;;
- partition-size:boot_a) v=0x4000000;; partition-size:vbmeta_a) v=0x800000;;
+ partition-size:boot_a) v=4000000;; partition-size:vbmeta_a) v=800000;;
  partition-size:super) v=0x220000000;; partition-size:cust) v=0x2a400000;; *) exit 1;; esac
  printf '%s: %s\n' "$2" "$v" >&2
 fi

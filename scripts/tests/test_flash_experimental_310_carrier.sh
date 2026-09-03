@@ -37,8 +37,8 @@ if [[ "${1:-}" == getvar ]]; then
     anti) value=1 ;;
     slot-count) value=2 ;;
     has-slot:boot|has-slot:vbmeta) value=yes ;;
-    partition-size:boot_a) value=0x4000000 ;;
-    partition-size:vbmeta_a) value=0x800000 ;;
+    partition-size:boot_a) value=4000000 ;;
+    partition-size:vbmeta_a) value=800000 ;;
     partition-size:super) value=0x240000000 ;;
     *) exit 1 ;;
   esac
