@@ -35,7 +35,7 @@ SHA1=2996ceec04554b151dd64c1bd6dfc6ba3ec0f7b8
 | arm64 `magisk` | `2d8419018dda41f7d9aca94c0ca8f926f3b8447ca5cf7fb71faeb8d05e29694e` | 相同 | 精确匹配 |
 | arm64 `magiskinit` / boot `init` | `383670a7ba3a6a4b79e5f3467e1da4b66a5df66a9b356ab9f70916854dd6b468` | 相同 | 精确匹配 |
 
-这只证明历史实验的输入字节和 Magisk payload 来源，不批准其过程或产物。它在官方 baseline/process gate 建立前生成，flags=3 未重签且 boot hash descriptor 不匹配，也未经过目标设备 slot/rollback 验收，因此永久 **NO FLASH**。最终镜像必须从 fresh hash-checked official boot 重新生成。
+这只证明历史实验的输入字节和 Magisk payload 来源，不批准其过程或产物。历史 image 在官方 baseline/process gate 建立前生成，flags=3 未重签且 boot hash descriptor 不匹配，因此永久弃用。当前 fresh patch 已从同一 exact official boot 独立重复生成并完成结构审计，但只允许在 310 carrier stock-boot 验收后通过独立 `boot_a` gate 使用；它仍不是 AVB 自洽或生产验证镜像。
 
 ## Vector 2.2（维护中的 LSPosed 后继）
 

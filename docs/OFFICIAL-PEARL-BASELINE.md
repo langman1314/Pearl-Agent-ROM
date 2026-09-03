@@ -2,7 +2,7 @@
 
 ## 选择结果
 
-当前第三方输入包已因 AVB descriptor 与 `super.zst` logical extent 不可能同时成立而被标记为 **NO FLASH**。项目的新 ROM/恢复基线改为：
+当前第三方输入包因 AVB descriptor 与 `super.zst` logical extent 不可能同时成立，不得作为官方/可验证恢复基线；按用户明确风险，它仅通过 `docs/EXPERIMENTAL-310-CARRIER.md` 的固定 hash 和 allowlist 作为实验 carrier。项目的官方 ROM/恢复基线改为：
 
 | 字段 | 值 |
 |---|---|

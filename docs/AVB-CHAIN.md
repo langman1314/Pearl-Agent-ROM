@@ -54,7 +54,7 @@
 | `system_ext` | 869,822,464 | 897,777,664 | 7,077,888 | 7,159,808 | 912,015,360 | 比 extent 大 42,192,896，物理上不可能 |
 | `vendor` | 1,965,887,488 | 1,972,944,896 | 15,544,320 | 15,720,448 | 2,004,209,664 | 比 extent 大 38,322,176，物理上不可能 |
 
-因此至少 `product`、`system_ext`、`vendor` 的签名 hashtree descriptor 不可能对应当前 `super.zst`。这不是补一个缺失文件或把 top-level flags 改回 0 能修复的问题；它证明该第三方包的签名 metadata 与 logical payload 来自不一致的 donor/layout。当前包不能建立可验证 AVB 链，继续保持 **NO FLASH**。
+因此至少 `product`、`system_ext`、`vendor` 的签名 hashtree descriptor 不可能对应当前 `super.zst`。这不是补一个缺失文件或把 top-level flags 改回 0 能修复的问题；它证明该第三方包的签名 metadata 与 logical payload 来自不一致的 donor/layout。当前包不能建立可验证 AVB 链，仍然不是官方/生产基线；用户已明确批准的实验例外只允许 `docs/EXPERIMENTAL-310-CARRIER.md` 中固定 hash、固定 allowlist 的 carrier 路线。
 
 ## flags 篡改证明
 
@@ -69,7 +69,7 @@ Magisk patched boot 同样把内嵌 vbmeta flags 从 stock 的 `0` 改成 `3`。
 1. footer 与 RSA vbmeta 结构恢复成功；
 2. boot descriptor SHA-256 明确不匹配。
 
-所以 patched boot 依赖禁用 AVB verification 的启动路径，不是重新签名且 descriptor 自洽的镜像。**现阶段不得刷入。**
+所以 patched boot 依赖禁用 AVB verification 的启动路径，不是重新签名且 descriptor 自洽的镜像。历史 patched boot 仍然永久弃用；当前 fresh Magisk patch 也只允许在 310 carrier 的 stock-boot 验收后通过独立 `boot_a` 脚本写入，不能把它描述为 AVB 自洽或生产验证镜像。
 
 ## ROM 身份不一致
 
@@ -100,17 +100,17 @@ Magisk patched boot 同样把内嵌 vbmeta flags 从 stock 的 `0` 改成 `3`。
 
 1. 永不刷 `efuse`、`preloader1`、`preloader2`；
 2. inactive slot 保留 stock boot；
-3. 不盲刷 `vbmeta*`；
+3. data-only Agent 阶段不刷 `vbmeta*`；310 carrier 阶段只按固定 hash 写入其三份 slot-A vbmeta，并明确这是 verification-disabled experimental 状态；
 4. 实机读取当前槽 `boot`/`vbmeta*` 并核对哈希后再生成设备专用方案；
 5. stock boot 回滚脚本和独立官方救砖包必须先准备完成。
 
 ## 剩余门禁
 
-- 当前 `super.zst` 已完整提取并证明无法满足签名 hashtree descriptor；不得尝试通过关闭 verification 把该矛盾包转成可刷状态；
-- 获取可核验的官方 pearl fastboot/recovery 基线和官方哈希，重新选择 ROM 基线；
-- 从真机当前槽导出 `boot`、`vbmeta`、`vbmeta_system`、`vbmeta_vendor` 并对比；
+- 当前 `super.zst` 已完整提取并证明无法满足签名 hashtree descriptor；不得把关闭 verification 当作修复 AVB 矛盾；
+- 官方 pearl fastboot/recovery 基线与官方哈希已固定；310 只作为用户明确批准的 unverified carrier，不是 AVB-valid ROM；
+- 真机 `fetch` 与 temporary `boot` 均不受支持，当前槽镜像无法导出；用户仅为 unverified experiment 明确 waiver 当前分区备份；
 - 记录 bootloader unlock/critical unlock 状态及当前 AVB/verity 状态；
-- 使用同版本 Magisk 30.7 官方 `magiskboot` 对 stock 和 patched boot 再做工具级 unpack/repack 测试；
-- 建立仅 active slot 测试、inactive slot stock 回滚流程。
+- fresh Magisk 30.7 patch已完成双次独立生成与结构审计；仍需真机 stock carrier 启动、root 和 stock boot-A 回滚验证；
+- 仅 active slot 的真机 dry-run、carrier 验收、stock boot-A 回滚、Vector/Nexus/Hermes 分阶段验收仍未完成。
 
-在这些门禁完成前，AVB 审计状态仍是 **NO FLASH**。
+在物理 dry-run 和分阶段验收完成前，AVB 审计状态仍是 **NO FLASH / EXECUTION NOT AUTHORIZED**。
