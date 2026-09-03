@@ -134,7 +134,7 @@ plan=(
   "flash|boot_a|images/boot-stock.img"
   "flash|vendor_boot_a|images/vendor_boot.img"
   "flash|dtbo_a|images/dtbo.img"
-  "flash|super|images/super.img"
+  "flash_sparse|super|images/super.img"
   "flash|vbmeta_system_a|images/vbmeta_system.img"
   "flash|vbmeta_vendor_a|images/vbmeta_vendor.img"
   "flash|vbmeta_a|images/vbmeta.img"
@@ -149,6 +149,8 @@ for entry in "${plan[@]}"; do
   IFS='|' read -r command arg file <<<"$entry"
   if [[ "$command" == flash ]]; then
     printf '  fastboot flash %s %s\n' "$arg" "$file"
+  elif [[ "$command" == flash_sparse ]]; then
+    printf '  fastboot -S 256M flash %s %s\n' "$arg" "$file"
   elif [[ -n "$arg" ]]; then
     printf '  fastboot %s %s\n' "$command" "$arg"
   else
@@ -166,6 +168,7 @@ for entry in "${plan[@]}"; do
   IFS='|' read -r command arg file <<<"$entry"
   case "$command" in
     flash) "${fastboot[@]}" flash "$arg" "$STAGING/$file" ;;
+    flash_sparse) "${fastboot[@]}" -S 256M flash "$arg" "$STAGING/$file" ;;
     erase) "${fastboot[@]}" erase "$arg" ;;
     set_active) "${fastboot[@]}" set_active "$arg" ;;
     reboot) "${fastboot[@]}" reboot ;;

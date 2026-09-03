@@ -13,6 +13,7 @@ CHUNK_RAW = 0xCAC1
 CHUNK_FILL = 0xCAC2
 FILE_HEADER = struct.Struct("<I4H4I")
 CHUNK_HEADER = struct.Struct("<2H2I")
+MAX_RAW_CHUNK_BYTES = 256 * 1024 * 1024
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,7 +33,10 @@ def convert(source: Path, destination: Path, block_size: int) -> None:
     if size % block_size:
         raise ValueError(f"raw image size {size} is not block aligned to {block_size}")
     total_blocks = size // block_size
-    max_raw_blocks = (0xFFFFFFFF - CHUNK_HEADER.size) // block_size
+    protocol_max_raw_blocks = (0xFFFFFFFF - CHUNK_HEADER.size) // block_size
+    max_raw_blocks = min(protocol_max_raw_blocks, MAX_RAW_CHUNK_BYTES // block_size)
+    if max_raw_blocks == 0:
+        raise ValueError("block size exceeds the maximum RAW chunk size")
     if total_blocks > 0xFFFFFFFF:
         raise ValueError("raw image has too many blocks for Android sparse v1")
 

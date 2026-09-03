@@ -67,10 +67,10 @@ PEARL_ACCEPT_UNVERIFIED_310=YES_I_ACCEPT_UNVERIFIED_310_AND_DATA_LOSS \
 FASTBOOT_BIN="$work/fastboot" bash "$FLASHER" \
   --staging "$work/staging" --serial PEARL123 --wipe --execute >/dev/null
 for expected in \
-  'flash boot_a' 'flash vendor_boot_a' 'flash dtbo_a' 'flash super' \
+  'flash boot_a' 'flash vendor_boot_a' 'flash dtbo_a' '-S 256M flash super' \
   'flash vbmeta_system_a' 'flash vbmeta_vendor_a' 'flash vbmeta_a' \
   'erase metadata' 'erase userdata' 'set_active a' 'reboot'; do
-  grep -F "$expected" "$MOCK_LOG" >/dev/null || {
+  grep -F -- "$expected" "$MOCK_LOG" >/dev/null || {
     echo "missing expected command: $expected" >&2; exit 1;
   }
 done
