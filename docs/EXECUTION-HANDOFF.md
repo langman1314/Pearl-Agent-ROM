@@ -1,0 +1,71 @@
+# Physical execution handoff
+
+## Prepared state
+
+Host preparation is complete at Git HEAD `8536225` or later. No partition has been written during this project session. The phone was last safely returned to Android after unsupported `fastboot fetch` and `fastboot boot` probes, and is currently disconnected from both ADB and fastboot.
+
+Required host-only directories:
+
+- carrier: `D:\PearlAgentBuild\carrier-310-staging`
+- Agent artifacts: `D:\PearlAgentBuild\controlled-release`
+- official recovery anchor: preserved `OS3.0.3.0.VLHCNXM` fastboot archive/extraction
+
+Do not run `flashl.bat` from the 310 ZIP. Do not add preloader, efuse, GPT, slot B or low-level firmware commands.
+
+## Gate 1 — physical carrier dry run
+
+Put the target phone in bootloader fastboot and connect it directly by reliable USB. From Git Bash run only:
+
+```bash
+cd '/d/生活问答/Pearl-Agent-ROM'
+FASTBOOT_BIN='/d/生活问答/Pearl-Agent-ROM/.tools/android-sdk/platform-tools/fastboot.exe' \
+  bash scripts/flash-experimental-310-carrier.sh \
+  --staging /d/PearlAgentBuild/carrier-310-staging \
+  --serial 7TV8X4RS8DAAIN4P
+```
+
+The final line must be `DRY_RUN_ONLY`. It must print exactly the 11 operations documented in `docs/EXPERIMENTAL-310-CARRIER.md`. Stop on any hash, product, unlock, anti, slot, geometry or capacity mismatch. A clean dry run still does not itself authorize execution.
+
+## Gate 2 — destructive carrier phase
+
+This phase destroys userdata and the current shared logical system. It is eligible only after reviewing the live dry-run transcript. The script requires all three deliberate controls: `--wipe`, `--execute`, and the exact `PEARL_ACCEPT_UNVERIFIED_310` value in its usage text.
+
+On any command failure, do not manually reboot. Preserve the exact console transcript and keep the phone in fastboot for diagnosis. A successful run reboots only after stock boot-A, vendor_boot-A, dtbo-A, shared super, the three slot-A vbmeta images, both clean-install erases and active-slot A all succeed.
+
+## Gate 3 — clean carrier acceptance
+
+Before root, confirm and record:
+
+- boot completion, lock screen and launcher;
+- ADB authorization, `pearl`, SDK 36, build identity and active slot A;
+- display, touch, buttons, charging and thermal behavior;
+- Wi-Fi, Bluetooth, modem/SIM/data and calls;
+- speaker, microphone, cameras and sensors;
+- stock XiaoAi launch, power-button behavior, ASR, UI and TTS;
+- XiaoAi package `com.miui.voiceassist`, versionCode `507012002`, full-APK SHA-256 `326fe0601b11698e70f96aca5dc05d1c783cf675ebc872024e96b405aaf64406`.
+
+Stop and recover instead of adding Magisk if any base function fails.
+
+## Gate 4 — fresh Magisk boot and rollback proof
+
+Run `scripts/switch-experimental-310-boot.sh` first without `--execute`, mode `magisk`. After its physical dry run passes, execution requires the exact `PEARL_ACCEPT_MAGISK_BOOT` value in the script. The only allowed mutation is fresh patched `boot_a` SHA-256 `f3cb3ca...72005`, active slot A and reboot.
+
+Confirm boot, ADB, Magisk 30.7 and `su`. Then reboot to fastboot and prove `--mode stock` rollback using its independent `PEARL_CONFIRM_STOCK_RESTORE` acknowledgement. Confirm stock boot again. Only after that proof, install the fresh Magisk boot a second time and revalidate root.
+
+## Gate 5 — data-only Agent deployment
+
+Run `scripts/deploy-agent-after-root.sh` against `D:\PearlAgentBuild\controlled-release` without `--execute`. It requires pearl SDK 36 and exact hashes for Nexus pearl.2, stable Vector v2.2 and the Agent module. After review, its execution path requires the exact `PEARL_ACCEPT_AGENT_DEPLOY` acknowledgement.
+
+The script installs only an APK and two Magisk modules, cleans temporary files and reboots. It never flashes a partition and intentionally does not enable Xposed scope. After reboot:
+
+1. confirm Magisk and `zygisk_vector` are healthy;
+2. open the Vector manager and enable Nexus only for the exact XiaoAi package/process scope required by the compatibility config;
+3. verify Nexus signer/version and exact XiaoAi hash gate before enabling takeover;
+4. provision DeepSeek and optional Telegram credentials through the documented mode-0600 files, never command-line logs;
+5. validate authenticated localhost MCP, Hermes submit/status/cancel/run, reboot persistence, fail-open native XiaoAi, crash fuse/backoff and one-version rollback.
+
+## OS4 and recovery boundary
+
+The OS4 ZIP remains DSU-only and is not part of these five gates. Test it later only as a disposable DSU after the carrier/Agent stack is stable.
+
+The official Android 15 fastboot package remains the recovery anchor. This MediaTek device must not be described as guaranteed Qualcomm 9008 recoverable; severe-brick BROM/Preloader/DA recovery depends on compatible tooling and authorization.
