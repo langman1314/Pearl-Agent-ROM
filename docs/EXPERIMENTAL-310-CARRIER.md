@@ -37,8 +37,8 @@ The supplied `super.zst` was:
 
 1. verified and decompressed with the controlled MSYS2 `zstd`, not the ROM-bundled executable;
 2. measured as 9,126,805,504 raw bytes with SHA-256 `f059a5802773e794823f620c46194f4d6a8fc0d8fbc5e591c8ebd2df85a9cc43`;
-3. converted with the tested in-repository `scripts/raw-to-android-sparse.py`;
-4. published as a 7,223,955,976-byte sparse image, SHA-256 `00353c64019417175f0c84632c61a5ee93df8028ede10b119f29311c58cceb1b`;
+3. converted with the tested in-repository `scripts/raw-to-android-sparse.py`, using explicit zero FILL chunks so target bytes cannot remain stale as they could with DONT_CARE;
+4. published as a 7,223,956,060-byte sparse image, SHA-256 `deb65b261a6a98dad37fa759d4a9a9ab03898b89a3ee41dddbdaa08d16a2af77`;
 5. re-expanded with the strict independent `scripts/unsparse-android-image.py` and required to reproduce the exact raw SHA-256.
 
 No executable from the third-party ROM ZIP was run.
@@ -68,7 +68,9 @@ Before installing Magisk or Agent components, the clean carrier must reach Andro
 
 Only after Phase B passes, `scripts/switch-experimental-310-boot.sh --mode magisk` may replace `boot_a` with the independently reproduced fresh Magisk 30.7 image SHA-256 `f3cb3ca...72005`. The historical patched boot remains prohibited. The same script's separately acknowledged `--mode stock` path restores exact staged `boot-stock.img`; both modes are dry-run-first and permit only `boot_a`, `set_active a`, and reboot before any Vector, Nexus or Hermes acceptance proceeds.
 
-Hermes, Nexus and the Magisk module remain data-only payloads. The 310 XiaoAi config is already bound to its independently audited exact APK SHA-256, so same-version/different-bytes packages fail closed.
+After rooted Android itself passes, `scripts/deploy-agent-after-root.sh` provides a third independent dry-run/acknowledgement gate. It hash-verifies and installs only the approved Nexus APK, official Vector v2.2 Magisk module and data-only Hermes module, then reboots; it has no fastboot or partition-writing path and deliberately does not enable Vector/Xposed scope. Scope is enabled only after the reboot and exact Nexus/XiaoAi identity checks.
+
+Hermes, Nexus and the Agent Magisk module remain data-only payloads. The 310 XiaoAi config is already bound to its independently audited exact APK SHA-256, so same-version/different-bytes packages fail closed.
 
 ## OS4 DSU relationship
 
