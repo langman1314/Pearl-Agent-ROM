@@ -129,6 +129,15 @@ verify_sparse_super "$STAGING/images/super.img"
 
 fastboot=("$FASTBOOT_BIN")
 [[ -z "$SERIAL" ]] || fastboot+=( -s "$SERIAL" )
+fastboot_image_path() {
+  local path="$1"
+  if [[ "${FASTBOOT_BIN,,}" == *.exe ]] && command -v cygpath >/dev/null 2>&1; then
+    cygpath -w -- "$path"
+  else
+    printf '%s\n' "$path"
+  fi
+}
+
 devices="$("$FASTBOOT_BIN" devices 2>&1)"
 if [[ -n "$SERIAL" ]]; then
   awk -v serial="$SERIAL" '$1 == serial && $2 == "fastboot" { ok=1 } END { exit !ok }' \
@@ -224,8 +233,8 @@ run_entry() {
   validate_plan_entry "$entry"
   IFS='|' read -r command arg file <<<"$entry"
   if case "$command" in
-    flash) "${fastboot[@]}" flash "$arg" "$STAGING/$file" ;;
-    flash_sparse) "${fastboot[@]}" -S 256M flash "$arg" "$STAGING/$file" ;;
+    flash) "${fastboot[@]}" flash "$arg" "$(fastboot_image_path "$STAGING/$file")" ;;
+    flash_sparse) "${fastboot[@]}" -S 256M flash "$arg" "$(fastboot_image_path "$STAGING/$file")" ;;
     erase) "${fastboot[@]}" erase "$arg" ;;
     set_active) "${fastboot[@]}" set_active "$arg" ;;
     reboot) "${fastboot[@]}" reboot ;;

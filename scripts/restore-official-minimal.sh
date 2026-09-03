@@ -83,6 +83,10 @@ verify_sparse_payload() {
 }
 verify_sparse_payload "$STAGING/images/super.img" "$EXPECTED_SUPER_BYTES" "$EXPECTED_SUPER_RAW_SHA256" images/super.img
 verify_sparse_payload "$STAGING/images/cust.img" "$EXPECTED_CUST_BYTES" "$EXPECTED_CUST_RAW_SHA256" images/cust.img
+fastboot_image_path() {
+ local path="$1"
+ if [[ "${FASTBOOT_BIN,,}" == *.exe ]] && command -v cygpath >/dev/null 2>&1; then cygpath -w -- "$path"; else printf '%s\n' "$path"; fi
+}
 fastboot=("$FASTBOOT_BIN"); [[ -z "$SERIAL" ]] || fastboot+=( -s "$SERIAL" )
 devices="$("$FASTBOOT_BIN" devices 2>&1)"
 if [[ -n "$SERIAL" ]]; then
@@ -137,8 +141,8 @@ run_entry() {
  validate_plan_entry "$entry"
  IFS='|' read -r command arg file <<<"$entry"
  if case "$command" in
-  flash) "${fastboot[@]}" flash "$arg" "$STAGING/$file";;
-  flash_sparse) "${fastboot[@]}" -S 256M flash "$arg" "$STAGING/$file";;
+  flash) "${fastboot[@]}" flash "$arg" "$(fastboot_image_path "$STAGING/$file")";;
+  flash_sparse) "${fastboot[@]}" -S 256M flash "$arg" "$(fastboot_image_path "$STAGING/$file")";;
   erase) "${fastboot[@]}" erase "$arg";;
   set_active) "${fastboot[@]}" set_active "$arg";;
   reboot) "${fastboot[@]}" reboot;;

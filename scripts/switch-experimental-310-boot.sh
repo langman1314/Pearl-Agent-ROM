@@ -55,6 +55,15 @@ fi
 actual="$(sha256sum "$image" | awk '{print $1}')"
 [[ "$actual" == "$expected" ]] || { echo "Boot image hash mismatch" >&2; exit 1; }
 
+fastboot_image_path() {
+  local path="$1"
+  if [[ "${FASTBOOT_BIN,,}" == *.exe ]] && command -v cygpath >/dev/null 2>&1; then
+    cygpath -w -- "$path"
+  else
+    printf '%s\n' "$path"
+  fi
+}
+
 fastboot=("$FASTBOOT_BIN")
 [[ -z "$SERIAL" ]] || fastboot+=( -s "$SERIAL" )
 devices="$("$FASTBOOT_BIN" devices 2>&1)"
@@ -87,6 +96,6 @@ printf '  fastboot set_active a\n'
 printf '  fastboot reboot\n'
 $EXECUTE || { echo "DRY_RUN_ONLY"; exit 0; }
 [[ "$acknowledgement" == "$required_ack" ]] || { echo "Missing exact execution acknowledgement" >&2; exit 1; }
-"${fastboot[@]}" flash boot_a "$image"
+"${fastboot[@]}" flash boot_a "$(fastboot_image_path "$image")"
 "${fastboot[@]}" set_active a
 "${fastboot[@]}" reboot
