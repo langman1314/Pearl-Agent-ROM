@@ -26,6 +26,19 @@ Exact workflow provenance is tracked at `manifests/phone-artifacts-e0dca95.prove
 
 The rootfs sidecar, dependency freeze, dpkg list, build JSON, host package list and static-decoder sidecars are all separately covered by the tracked aggregate manifest.
 
+## Experimental device deployment set
+
+The complete non-stock deployment set is copied to the host-only `D:\PearlAgentBuild\controlled-release` directory and tracked by `manifests/experimental-agent-release.sha256`:
+
+| Artifact | SHA-256 | Provenance |
+|---|---|---|
+| `Magisk-v30.7.apk` | `e0d32d21...9ebd5` | exact official APK bytes, independently matched to the app already installed on the phone |
+| `Vector-v2.2-3080-Release.zip` | `9ee83235...79cc` | `JingMatrix/Vector` stable `v2.2` GitHub release; GitHub asset size/digest matched |
+| `nexus-1.0.1-pearl.2-release.apk` | `99778de7...988a` | project RSA-4096 release signer; exact XiaoAi APK hash gate included |
+| `pearl-agent-magisk-0.1.0-1.zip` | `b4cbb879...df7c` | accepted CI run `33319865389` |
+
+Vector's 69-entry ZIP passed CRC/path/case-collision inspection, identifies module id `zygisk_vector`, version `v2.2 (3080-88f8e1fa-JingMatrix-Vector)`, declares Android 8.1–17 support, internally verifies extracted payload hashes, and contains no partition image or flashing script. Device compatibility is still an acceptance test, not assumed from the declaration.
+
 ## Gates passed in the workflow
 
 - Ubuntu host packages came from the pinned `20260801T000000Z` snapshot and exact versions were recorded.
@@ -50,10 +63,10 @@ After download, the module ZIP was inspected independently of its outer manifest
 
 These artifacts are **host-approved build outputs**, not device-approved and not a flash package. In particular:
 
-- the module may be installed only after official-stock boot patch provenance, actual-device identity/slot/backup/recovery gates and Magisk 30.7 validation pass;
-- Vector 2.2 still requires pearl/official Android 15 real-device validation;
+- for the experimental 310 path, the module may be installed only after the clean stock-boot carrier reaches Phase-B acceptance and the fresh Magisk boot succeeds; the user's current-partition backup waiver is recorded separately and is not a production-safety claim;
+- Vector 2.2 still requires pearl/310 Android 16 real-device validation before Nexus scope is enabled;
 - the module writes `/data` only and contains no boot/vbmeta/super/preloader payload;
-- the historical patched boot remains rejected, and no final patched boot exists;
+- the historical patched boot remains rejected; the independently reproduced host-only fresh patch is exactly `f3cb3ca...72005` and is separately gated by `scripts/switch-experimental-310-boot.sh`;
 - no command here authorizes flashing.
 
 Current overall state remains **NO FLASH**.
