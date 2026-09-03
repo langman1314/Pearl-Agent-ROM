@@ -68,4 +68,6 @@ The script installs only an APK and two Magisk modules, cleans temporary files a
 
 The OS4 ZIP remains DSU-only and is not part of these five gates. Test it later only as a disposable DSU after the carrier/Agent stack is stable.
 
-The official Android 15 fastboot package remains the recovery anchor. This MediaTek device must not be described as guaranteed Qualcomm 9008 recoverable; severe-brick BROM/Preloader/DA recovery depends on compatible tooling and authorization.
+The official Android 15 fastboot package remains the recovery anchor. `scripts/restore-official-minimal.sh` now provides a separate dry-run/acknowledgement-gated clean restore from the exact audited official extraction. It writes only slot-A boot/vendor_boot/dtbo/vbmeta, shared official super, unslotted official cust, erases metadata/userdata, activates A and reboots; `-S 256M` is enforced for super/cust, and preloader, efuse, GPT, slot B plus all low-level firmware remain excluded. Its full-size real-image mocked dry run and regression test passed, but it too requires physical live-variable dry run before any use.
+
+This MediaTek device must not be described as guaranteed Qualcomm 9008 recoverable; severe-brick BROM/Preloader/DA recovery depends on compatible tooling and authorization.

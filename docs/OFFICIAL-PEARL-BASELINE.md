@@ -77,7 +77,11 @@ tracker 是社区维护的官方 OTA/Fastboot URL 索引，不是 Xiaomi 的签�
 
 固定 AOSP avbtool commit `c5066a96caa7bf4150c0a8cc8cc14ab81733fdc7` 在 portable MSYS2/POSIX 下执行 `verify_image --follow_chain_partitions`，完整通过 15 项：top-level vbmeta；chained boot/footer/hash；vbmeta_system 与 product/system/system_ext hashtrees；vbmeta_vendor 与 vendor hashtree；dtbo/vendor_boot hashes；mi_ext/odm/odm_dlkm/vendor_dlkm hashtrees。顶层和 child vbmeta 使用同一 public-key SHA-1 `b2a02f1e56e366d727a1a8e089762fe0b91bbc84`，顶层 flags 为 `0`。精确输出已跟踪为 `manifests/official-pearl-avb.verify.txt`。输出里的 `not specified` 表示调用方没有另传 `--expected_chain_partition`；在 follow 递归中，固定 avbtool 仍把每个 child embedded key 与父 descriptor 的 `public_key` 逐字节比较，不是跳过 chain key 验证。
 
-因此官方包的下载 provenance、archive 完整性与完整 AVB chain 三层门禁均已通过；真机设备身份、rollback 和安装门禁仍未通过，状态继续 **NO FLASH**。
+因此官方包的下载 provenance、archive 完整性与完整 AVB chain 三层门禁均已通过。真机 identity/slot/anti/capacity 已采集，但当前分区备份与物理 official-recovery dry-run 仍未通过；状态继续 **NO FLASH**。
+
+## 最小化官方恢复路径
+
+`scripts/restore-official-minimal.sh` 不复用包内脚本，只接受本页 exact official image hash。其固定 allowlist 为 slot-A `boot`/`vendor_boot`/`dtbo`/三份 vbmeta、shared `super`、unslotted `cust`、clean-install metadata/userdata erase、active A 与最终 reboot；super/cust 均使用 `fastboot -S 256M`。`manifests/official-minimal-recovery.sha256` 固定了 8 个输入。真实 8.36 GB official super 等镜像已通过 host-only mocked dry-run，mock execution test 也验证了 exact acknowledgement 和 preloader/efuse/GPT/slot-B/低层固件全禁用。仍须在真机 fastboot 上先跑无 `--execute` 的 live-variable dry-run。
 
 ## 使用边界
 
