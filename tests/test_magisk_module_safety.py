@@ -88,6 +88,14 @@ class UpgradeMaintenanceSafetyTest(unittest.TestCase):
         self.assertLess(remember, enter)
         self.assertLess(permissions, reinstall_clear)
         self.assertLess(reinstall_clear, leave)
+    def test_installer_validates_python_inside_chroot_tree(self) -> None:
+        script = text("customize.sh")
+        self.assertNotIn('[ -x "$stage/opt/pearl-agent/venv/bin/python" ]', script)
+        self.assertIn(
+            '[ "$(readlink "$stage/opt/pearl-agent/venv/bin/python3")" != /usr/bin/python3 ]',
+            script,
+        )
+        self.assertIn('[ ! -x "$stage/usr/bin/python3.11" ]', script)
 
 
 class PayloadRejectionSafetyTest(unittest.TestCase):

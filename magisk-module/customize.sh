@@ -109,10 +109,16 @@ fi
   rm -rf "$stage"
   abort "! Extracted rootfs is missing the Hermes bridge wrapper"
 }
-[ -x "$stage/opt/pearl-agent/venv/bin/python" ] || {
+if [ ! -L "$stage/opt/pearl-agent/venv/bin/python" ] ||
+   [ "$(readlink "$stage/opt/pearl-agent/venv/bin/python")" != python3 ] ||
+   [ ! -L "$stage/opt/pearl-agent/venv/bin/python3" ] ||
+   [ "$(readlink "$stage/opt/pearl-agent/venv/bin/python3")" != /usr/bin/python3 ] ||
+   [ ! -L "$stage/usr/bin/python3" ] ||
+   [ "$(readlink "$stage/usr/bin/python3")" != python3.11 ] ||
+   [ ! -x "$stage/usr/bin/python3.11" ]; then
   rm -rf "$stage"
   abort "! Extracted rootfs is missing the Python environment"
-}
+fi
 grep -q "$EXPECTED_HERMES_COMMIT" "$stage/opt/pearl-agent/BUILD.json" || {
   rm -rf "$stage"
   abort "! Rootfs Hermes commit does not match the approved source"

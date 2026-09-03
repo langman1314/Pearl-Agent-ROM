@@ -44,7 +44,7 @@ agent="$RELEASE_DIR/pearl-agent-magisk-0.1.0-1.zip"
 declare -A expected=(
   ["$nexus"]=99778de7820e8b3c19712a44ef921cddb778ba26156c7abd6593b7fd97b9988a
   ["$vector"]=9ee8323575d615f7b3f1076ff60b2a63a49390ef11881b52632311a37f6f79cc
-  ["$agent"]=b4cbb87957798043a2c427eb6dc0431877d9f214b19646b29a2604f2c81bdf7c
+  ["$agent"]=948a6c1ce70854a9167ca9bf1874e19e3bf08ea243f3be499215940a67cfe941
 )
 for file in "$nexus" "$vector" "$agent"; do
   [[ -f "$file" ]] || { echo "Missing approved artifact: $file" >&2; exit 1; }

@@ -12,7 +12,7 @@ cat > "$work/sha256sum" <<'EOF'
 case "$1" in
  *nexus-1.0.1-pearl.2-release.apk) h=99778de7820e8b3c19712a44ef921cddb778ba26156c7abd6593b7fd97b9988a;;
  *Vector-v2.2-3080-Release.zip) h=9ee8323575d615f7b3f1076ff60b2a63a49390ef11881b52632311a37f6f79cc;;
- *pearl-agent-magisk-0.1.0-1.zip) h=b4cbb87957798043a2c427eb6dc0431877d9f214b19646b29a2604f2c81bdf7c;;
+ *pearl-agent-magisk-0.1.0-1.zip) h=948a6c1ce70854a9167ca9bf1874e19e3bf08ea243f3be499215940a67cfe941;;
  *) exit 1;; esac
 printf '%s  %s\n' "$h" "$1"
 EOF
