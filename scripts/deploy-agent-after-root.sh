@@ -59,6 +59,19 @@ sdk="$("${adb[@]}" shell getprop ro.build.version.sdk | tr -d '\r')"
 [[ "$product" == pearl ]] || { echo "Refusing non-pearl Android device" >&2; exit 1; }
 [[ "$sdk" == 36 ]] || { echo "Experimental carrier requires Android SDK 36, got $sdk" >&2; exit 1; }
 
+adb_host_path() {
+  local path="$1"
+  if [[ "${ADB_BIN,,}" == *.exe ]] && command -v cygpath >/dev/null 2>&1; then
+    cygpath -w -- "$path"
+  else
+    printf '%s\n' "$path"
+  fi
+}
+
+nexus_adb="$(adb_host_path "$nexus")"
+vector_adb="$(adb_host_path "$vector")"
+agent_adb="$(adb_host_path "$agent")"
+
 printf 'Post-root deployment plan:\n'
 printf '  adb install -r nexus-1.0.1-pearl.2-release.apk\n'
 printf '  magisk --install-module Vector-v2.2-3080-Release.zip\n'
@@ -72,9 +85,9 @@ remote=/data/local/tmp/pearl-agent-deploy
 cleanup() { "${adb[@]}" shell su -c "rm -rf $remote" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 "${adb[@]}" shell su -c "rm -rf $remote && mkdir -p $remote && chmod 0777 $remote"
-"${adb[@]}" push "$vector" "$remote/vector.zip"
-"${adb[@]}" push "$agent" "$remote/agent.zip"
-"${adb[@]}" install -r "$nexus"
+"${adb[@]}" push "$vector_adb" "$remote/vector.zip"
+"${adb[@]}" push "$agent_adb" "$remote/agent.zip"
+"${adb[@]}" install -r "$nexus_adb"
 "${adb[@]}" shell su -c "magisk --install-module $remote/vector.zip"
 "${adb[@]}" shell su -c "magisk --install-module $remote/agent.zip"
 cleanup
