@@ -66,7 +66,7 @@ Before installing Magisk or Agent components, the clean carrier must reach Andro
 
 ### Phase C — fresh Magisk boot and data-only Agent
 
-Only after Phase B passes, replace `boot_a` with the independently reproduced fresh Magisk 30.7 image SHA-256 `f3cb3ca...72005`. The historical patched boot remains prohibited. Stock boot restoration uses the exact staged `boot-stock.img` before any Vector, Nexus or Hermes acceptance proceeds.
+Only after Phase B passes, `scripts/switch-experimental-310-boot.sh --mode magisk` may replace `boot_a` with the independently reproduced fresh Magisk 30.7 image SHA-256 `f3cb3ca...72005`. The historical patched boot remains prohibited. The same script's separately acknowledged `--mode stock` path restores exact staged `boot-stock.img`; both modes are dry-run-first and permit only `boot_a`, `set_active a`, and reboot before any Vector, Nexus or Hermes acceptance proceeds.
 
 Hermes, Nexus and the Magisk module remain data-only payloads. The 310 XiaoAi config is already bound to its independently audited exact APK SHA-256, so same-version/different-bytes packages fail closed.
 
