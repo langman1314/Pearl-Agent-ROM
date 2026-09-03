@@ -37,9 +37,10 @@ The supplied `super.zst` was:
 
 1. verified and decompressed with the controlled MSYS2 `zstd`, not the ROM-bundled executable;
 2. measured as 9,126,805,504 raw bytes with SHA-256 `f059a5802773e794823f620c46194f4d6a8fc0d8fbc5e591c8ebd2df85a9cc43`;
-3. converted with the tested in-repository `scripts/raw-to-android-sparse.py`, using explicit zero FILL chunks so target bytes cannot remain stale as they could with DONT_CARE;
-4. published as a 7,223,956,060-byte sparse image, SHA-256 `deb65b261a6a98dad37fa759d4a9a9ab03898b89a3ee41dddbdaa08d16a2af77`;
-5. re-expanded with the strict independent `scripts/unsparse-android-image.py` and required to reproduce the exact raw SHA-256.
+3. converted with the tested in-repository `scripts/raw-to-android-sparse.py`, using explicit zero FILL chunks so target bytes cannot remain stale as they could with DONT_CARE and capping every RAW chunk at 256 MiB;
+4. published as a 7,223,956,348-byte sparse image, SHA-256 `89eb4b4d0a97119c0564a72e138cd1fd2f33d58aff5bf57b6179e708b1d9db6f`;
+5. independently parsed as 65 valid chunks (44 RAW, 21 zero FILL, 0 DONT_CARE), maximum RAW chunk exactly 268,435,456 bytes and no trailing bytes;
+6. re-expanded with the strict independent `scripts/unsparse-android-image.py` and required to reproduce the exact raw SHA-256.
 
 No executable from the third-party ROM ZIP was run.
 
@@ -60,7 +61,7 @@ Host acceptance has passed: the full staging manifest rehashed successfully; the
 7. set active slot A;
 8. reboot only after every prior operation succeeds.
 
-The script validates product, unlocked state, anti value, A/B geometry, exact boot/vbmeta capacities, super capacity, sparse expanded size and all SHA-256 values. A failed command stops before reboot. Execution requires `--wipe`, `--execute`, and the exact risk acknowledgement environment value.
+The script validates product, unlocked state, anti value, A/B geometry, exact boot/vbmeta capacities, super capacity, sparse expanded size and all SHA-256 values. It invokes the pinned platform-tools capability `fastboot -S 256M flash super` so the host also resplits sparse transport units conservatively. A failed command stops before reboot. Execution requires `--wipe`, `--execute`, and the exact risk acknowledgement environment value.
 
 ### Phase B — carrier acceptance before root
 
