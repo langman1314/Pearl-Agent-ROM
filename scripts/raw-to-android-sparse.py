@@ -10,7 +10,7 @@ from pathlib import Path
 
 SPARSE_MAGIC = 0xED26FF3A
 CHUNK_RAW = 0xCAC1
-CHUNK_DONT_CARE = 0xCAC3
+CHUNK_FILL = 0xCAC2
 FILE_HEADER = struct.Struct("<I4H4I")
 CHUNK_HEADER = struct.Struct("<2H2I")
 
@@ -52,6 +52,8 @@ def convert(source: Path, destination: Path, block_size: int) -> None:
         total_size = CHUNK_HEADER.size
         if current_type == CHUNK_RAW:
             total_size += current_blocks * block_size
+        elif current_type == CHUNK_FILL:
+            total_size += 4
         output.seek(header_offset)
         output.write(CHUNK_HEADER.pack(current_type, 0, current_blocks, total_size))
         output.seek(end)
@@ -66,7 +68,7 @@ def convert(source: Path, destination: Path, block_size: int) -> None:
                 block = src.read(block_size)
                 if len(block) != block_size:
                     raise EOFError("raw image ended before declared size")
-                chunk_type = CHUNK_DONT_CARE if block == zero else CHUNK_RAW
+                chunk_type = CHUNK_FILL if block == zero else CHUNK_RAW
                 must_split = (
                     current_type is not None
                     and (
@@ -81,6 +83,8 @@ def convert(source: Path, destination: Path, block_size: int) -> None:
                     current_blocks = 0
                     header_offset = out.tell()
                     out.write(bytes(CHUNK_HEADER.size))
+                    if chunk_type == CHUNK_FILL:
+                        out.write(bytes(4))
                 if chunk_type == CHUNK_RAW:
                     out.write(block)
                 current_blocks += 1

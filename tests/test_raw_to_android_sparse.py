@@ -46,6 +46,18 @@ class RawToAndroidSparseTest(unittest.TestCase):
             self.assertEqual(0, header[8])
             self.assertLess(sparse.stat().st_size, raw.stat().st_size)
 
+            encoded = sparse.read_bytes()
+            offset = 28
+            chunk_types = []
+            for _ in range(header[7]):
+                chunk_type, _, chunk_blocks, total_size = struct.unpack(
+                    "<2H2I", encoded[offset : offset + 12]
+                )
+                chunk_types.append(chunk_type)
+                offset += total_size
+            self.assertIn(0xCAC2, chunk_types)
+            self.assertNotIn(0xCAC3, chunk_types)
+
     def test_rejects_unaligned_input(self):
         with tempfile.TemporaryDirectory() as directory:
             directory = Path(directory)
