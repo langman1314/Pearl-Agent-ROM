@@ -1,6 +1,6 @@
 # Pearl Agent staged acceptance plan
 
-Every stage is fail-stop. Passing a later software build does not waive an earlier device/recovery gate. Store evidence outside Git and record SHA-256 for every binary/image used.
+Every production stage is fail-stop. Passing later software work does not silently waive an earlier gate. For the separate unverified 310 experiment, the user's explicit current-partition backup waiver and data-loss acceptance are recorded in `docs/EXPERIMENTAL-310-CARRIER.md`; waived items remain visibly unpassed rather than being marked successful. Store evidence outside Git and record SHA-256 for every binary/image used.
 
 ## Stage 0 — host-only release evidence
 
@@ -14,7 +14,7 @@ Required before connecting the phone:
 - [x] Nexus release built from source, all unit tests passed, release signer fixed;
 - [x] Hermes rootfs, static ARM64 zstd and Magisk module CI artifact fully green and downloaded manifest independently rechecked (`run 33319865389`);
 - [ ] external backup of Nexus release key confirmed;
-- [ ] approved Magisk 30.7 and Vector 2.2 install artifacts copied to the controlled release directory with hashes.
+- [x] approved Magisk 30.7, Vector 2.2, Nexus pearl.2 and Agent module artifacts copied to the controlled release directory with one tracked hash manifest.
 
 Exit criterion: one release manifest identifies every non-stock artifact. Status remains NO FLASH.
 
@@ -22,11 +22,11 @@ Exit criterion: one release manifest identifies every non-stock artifact. Status
 
 Run both modes of `scripts/collect-device-preflight.sh` and verify each manifest.
 
-- [ ] ADB product/vendor/system identity collected;
-- [ ] current fingerprint/SDK/security patch/XiaoAi version recorded;
-- [ ] verified-boot and lock properties recorded;
-- [ ] fastboot product/unlocked/secure/anti variables recorded;
-- [ ] current-slot/slot-count/has-slot and boot/vbmeta sizes reconciled;
+- [x] ADB product/vendor/system identity collected;
+- [x] current fingerprint/SDK/security patch/XiaoAi version recorded;
+- [x] verified-boot and lock properties recorded;
+- [x] fastboot product/unlocked/secure/anti variables recorded;
+- [x] current-slot/slot-count/has-slot and boot/vbmeta sizes reconciled;
 - [ ] recovery and fastboot remain reachable independently of Android.
 
 Stop on a non-pearl identity, ambiguous slots, unexpected lock state, evidence hash failure or anti-rollback conflict.
@@ -38,19 +38,19 @@ This stage requires a separately reviewed root/recovery method; the generic coll
 - [ ] export every available stock boot and vbmeta slot without writing partitions;
 - [ ] hash and copy backups to two independent host locations;
 - [ ] compare currently installed stock images with the approved official package where applicable;
-- [ ] prepare minimal stock-boot restore commands using the actual partition map;
-- [ ] review the complete command transcript and prove it has no efuse/preloader/super/userdata/metadata side effect;
-- [ ] rehearse recovery entry and device detection without flashing.
+- [x] prepare minimal stock-boot restore commands using the actual partition map;
+- [x] review the stock/Magisk boot-switch command transcript and prove it has no efuse/preloader/super/userdata/metadata side effect;
+- [ ] rehearse recovery entry and device detection without flashing (fastboot entry passed; independent recovery remains unproven).
 
 Exit criterion: Android can fail to boot without losing an independently accessible stock restore route.
 
 ## Stage 3 — controlled Magisk boot experiment
 
-- [ ] regenerate the patch from the exact official boot SHA-256, never reuse the historical patched image;
-- [ ] record Magisk asset identity and patch logs without secrets;
-- [ ] pull, hash and unpack the result; compare stock/patched components with pinned `magiskboot`;
-- [ ] validate header/geometry/kernel/bootconfig and document embedded AVB flags honestly;
-- [ ] use temporary boot if the verified pearl bootloader supports it; otherwise use only the approved slot-specific plan;
+- [x] regenerate the patch from the exact official/310-identical boot SHA-256, never reuse the historical patched image;
+- [x] record Magisk asset identity and patch logs without secrets;
+- [x] pull, hash and unpack the result; compare stock/patched components with pinned `magiskboot`;
+- [x] validate header/geometry/kernel/bootconfig and document embedded AVB flags honestly;
+- [x] test temporary boot support (bootloader returned `unknown command`) and provide a separately gated slot-A plan plus exact stock rollback;
 - [ ] verify Android reaches boot completion, ADB, Wi-Fi, telephony and stock XiaoAi;
 - [ ] immediately execute stock rollback and prove it works before continuing.
 

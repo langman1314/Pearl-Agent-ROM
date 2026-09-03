@@ -4,7 +4,7 @@ Redmi Note 12T Pro (`pearl`) 的常驻 Android Agent 定制工程。
 
 ## 目标
 
-先在可核验的官方 HyperOS 3 / Android 15 pearl 基线上构建可恢复、可验证的刷机成品；Android 16 只在取得官方 pearl 基线后再升级，不以第三方改名移植包冒充：
+通用 Agent 组件仍以可核验的官方 pearl 包作为恢复锚；按用户明确风险选择，当前设备实验路线使用已知可启动但 AVB 不自洽的 `OS3.0.310.0` Android 16 carrier，并通过独立最小化脚本分阶段部署，绝不把它冒充官方/可验证固件：
 
 - Magisk root 与开机常驻服务；
 - Nexus 接管 XiaoAi 的低功耗唤醒、ASR、UI 与 TTS；
@@ -20,7 +20,9 @@ Redmi Note 12T Pro (`pearl`) 的常驻 Android Agent 定制工程。
 - SHA-256：`b684924f00fe5663f6438ddc482efc6a556f6af3475f94613b95f16dc0cba3c6`
 - 大小：`5,942,636,095` bytes
 - 身份：第三方 `mytiantian` 混合移植包，不是 Xiaomi 官方 fastboot ROM；AVB metadata 混合 Android 15 system 与 Android 12 vendor/boot，详见 `docs/AVB-CHAIN.md`。
-- 原包脚本会刷写 `preloader1/2`，本工程严禁运行或复用该脚本。
+- 原包脚本会刷写 `preloader1/2`，本工程严禁运行或复用该脚本；实验路线只使用 `docs/EXPERIMENTAL-310-CARRIER.md` 的固定最小 allowlist。
+
+另一个输入 `HarmonyOS4_DSU侧载尝鲜版12tp_by是天天吖.zip` 只有 EROFS `system.img`/`vendor.img`，缺少 boot chain，保留为 DSU 研究输入而不合并进 carrier；详见 `docs/OS4-DSU-AUDIT.md`。
 
 ## 已核验的官方重建/恢复基线
 
@@ -39,4 +41,4 @@ Redmi Note 12T Pro (`pearl`) 的常驻 Android Agent 定制工程。
 4. 每个变更镜像必须有 SHA-256 和原厂回滚镜像。
 5. 离线结构校验完成前不得实际刷机。
 
-详见 `docs/ARCHITECTURE.md`、`docs/OFFICIAL-PEARL-BASELINE.md`、`docs/THIRD-PARTY-RETIREMENT.md`、`docs/DEVICE-PREFLIGHT.md`、`docs/DEVICE-OBSERVATION-01.md`、`docs/NEXUS-RELEASE.md`、`docs/PHONE-ARTIFACTS.md`、`docs/XIAOAI-COMPATIBILITY.md`、`docs/CUSTOM-WAKE-PHRASE.md` 与 `docs/ACCEPTANCE.md`。
+详见 `docs/ARCHITECTURE.md`、`docs/EXPERIMENTAL-310-CARRIER.md`、`docs/OS4-DSU-AUDIT.md`、`docs/OFFICIAL-PEARL-BASELINE.md`、`docs/THIRD-PARTY-RETIREMENT.md`、`docs/DEVICE-PREFLIGHT.md`、`docs/DEVICE-OBSERVATION-01.md`、`docs/NEXUS-RELEASE.md`、`docs/PHONE-ARTIFACTS.md`、`docs/XIAOAI-COMPATIBILITY.md`、`docs/CUSTOM-WAKE-PHRASE.md` 与 `docs/ACCEPTANCE.md`。
