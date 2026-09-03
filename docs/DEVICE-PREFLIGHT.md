@@ -65,8 +65,8 @@ Human review must reconcile ADB and fastboot captures and prove:
 1. product is `pearl`, not just a flash-script label;
 2. bootloader state permits the intended controlled test;
 3. actual slot and partition naming is unambiguous;
-4. official baseline deployment has completed before expecting Android 15, build `OS3.0.3.0.VLHCNXM`, and XiaoAi `507009011`;
-5. both available stock boot/vbmeta images can be backed up and hash-identified through a separately approved read-only root/recovery procedure;
+4. reconcile the selected path explicitly: the experimental carrier expects Android SDK 36 and XiaoAi `507012002` with its bound full-APK hash, while an official recovery boot expects Android 15 `OS3.0.3.0.VLHCNXM` and XiaoAi `507009011`;
+5. both available stock boot/vbmeta images are backed up and hash-identified for production acceptance; this bootloader's missing `fetch` support and the user's narrow backup waiver remain recorded only for the unverified 310 experiment;
 6. fastboot/recovery access survives an Android boot failure;
 7. anti-rollback information does not contradict the proposed official baseline.
 
@@ -82,6 +82,6 @@ Keep **NO FLASH** if any of the following is true:
 - slot variables conflict or partition names are ambiguous;
 - bootloader state is unexpected;
 - no independent recovery path exists;
-- stock boot/vbmeta backups or their hashes are missing;
-- a command plan includes efuse, preloader, super, userdata, metadata or vbmeta bypass;
+- stock boot/vbmeta backups or their hashes are missing for production acceptance; the separately recorded user waiver applies only to the unverified 310 experiment and never converts this item to PASS;
+- a command plan includes efuse, preloader, GPT, slot B or generic flash-all behavior; `super`/clean-install erases/slot-A vbmeta are eligible only inside the separately reviewed exact-hash carrier or official-recovery allowlists and never as an improvised bypass;
 - any evidence manifest fails verification.

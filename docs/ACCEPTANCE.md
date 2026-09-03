@@ -44,6 +44,8 @@ This stage requires a separately reviewed root/recovery method; the generic coll
 
 Exit criterion: Android can fail to boot without losing an independently accessible stock restore route.
 
+After clean carrier boot, run `scripts/collect-post-install-acceptance.sh --phase carrier` into a new external evidence directory. A PASS proves the expected system/package identity but does not replace the manual hardware and XiaoAi behavior checks below.
+
 ## Stage 3 — controlled Magisk boot experiment
 
 - [x] regenerate the patch from the exact official/310-identical boot SHA-256, never reuse the historical patched image;
@@ -54,7 +56,7 @@ Exit criterion: Android can fail to boot without losing an independently accessi
 - [ ] verify Android reaches boot completion, ADB, Wi-Fi, telephony and stock XiaoAi;
 - [ ] immediately execute stock rollback and prove it works before continuing.
 
-Do not install Vector or Nexus in this stage.
+Do not install Vector or Nexus in this stage. Run `scripts/collect-post-install-acceptance.sh --phase magisk` after the first Magisk boot and preserve its PASS evidence before performing the mandatory stock boot-A rollback proof.
 
 ## Stage 4 — data-only Hermes module
 
@@ -69,7 +71,7 @@ Do not install Vector or Nexus in this stage.
 - [ ] exercise submit/status/cancel/run and reboot persistence;
 - [ ] force three short crashes and verify fuse/backoff; test disable and one-version rootfs rollback.
 
-Exit criterion: Hermes survives reboot and fails closed without token while Android/XiaoAi remain native.
+After credentials and Nexus MCP provisioning, run `scripts/collect-post-install-acceptance.sh --phase agent` and preserve its PASS evidence. Exit criterion: Hermes survives reboot and fails closed without token while Android/XiaoAi remain native.
 
 ## Stage 5 — Vector and Nexus scope
 

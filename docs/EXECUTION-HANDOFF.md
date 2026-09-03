@@ -76,6 +76,26 @@ PEARL_ACCEPT_SECRET_PROVISION=YES_PROVISION_HERMES_DEEPSEEK_SECRET \
 
 The second command displays a hidden prompt; paste the key there. Do not append the key to the command or save it in this repository.
 
+## Read-only post-install evidence
+
+After each corresponding gate, publish a new evidence directory with the read-only collector:
+
+```bash
+bash scripts/collect-post-install-acceptance.sh --phase carrier \
+  --serial 7TV8X4RS8DAAIN4P \
+  --output-dir /d/PearlAgentBuild/device-evidence/310-carrier-accepted
+
+bash scripts/collect-post-install-acceptance.sh --phase magisk \
+  --serial 7TV8X4RS8DAAIN4P \
+  --output-dir /d/PearlAgentBuild/device-evidence/310-magisk-accepted
+
+bash scripts/collect-post-install-acceptance.sh --phase agent \
+  --serial 7TV8X4RS8DAAIN4P \
+  --output-dir /d/PearlAgentBuild/device-evidence/310-agent-accepted
+```
+
+`carrier` enforces pearl/SDK 36/boot-complete/slot-A/orange state and exact XiaoAi version plus full APK hash. `magisk` additionally enforces root and Magisk 30.7. `agent` additionally verifies the Nexus APK, Vector/Agent module identities, pinned ARM64 Hermes build, secret file metadata without secret contents, supervisor/bridge PID identity, localhost listener, and non-secret Nexus provisioning shape. Every capture is atomically published with `manifest.sha256`, refuses overwrite, records no secret value, and contains no device mutation command. It complements rather than replaces manual hardware, voice, rollback, fail-open and endurance tests.
+
 ## OS4 and recovery boundary
 
 The OS4 ZIP remains DSU-only and is not part of these five gates. Test it later only as a disposable DSU after the carrier/Agent stack is stable.
