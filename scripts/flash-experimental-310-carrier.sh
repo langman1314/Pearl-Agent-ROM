@@ -8,13 +8,28 @@ set -Eeuo pipefail
 export MSYS_NO_PATHCONV=1
 export MSYS2_ARG_CONV_EXCL='*'
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
+
 STAGING=""
 SERIAL=""
 EXECUTE=false
 WIPE=false
 FASTBOOT_BIN="${FASTBOOT_BIN:-fastboot}"
 EXPECTED_RAW_SUPER_BYTES=9126805504
+EXPECTED_RAW_SUPER_SHA256=f059a5802773e794823f620c46194f4d6a8fc0d8fbc5e591c8ebd2df85a9cc43
+EXPECTED_SPARSE_SUPER_SHA256=89eb4b4d0a97119c0564a72e138cd1fd2f33d58aff5bf57b6179e708b1d9db6f
 ACK_VALUE=YES_I_ACCEPT_UNVERIFIED_310_AND_DATA_LOSS
+
+declare -A EXPECTED_IMAGE_SHA256=(
+  [images/boot-stock.img]=8526d0ff63b6606f4ccda6381f61921e6a56c3bcdd7fa0ace05578863f9a6f82
+  [images/vendor_boot.img]=5bbb608a856c6ec2023e0acb5b4d174bf4f81ee17893708883af7453a2590654
+  [images/dtbo.img]=dbc8f42ed1cd6704521d609c5bfc3db71f28bc07a0a54ca8dd0e9aa40ee944c9
+  [images/vbmeta.img]=e6d3cc2daf15266bc324a5986daa475ec119c1e7672e0a187439d8b5ce644e05
+  [images/vbmeta_system.img]=c739d1a67ebfd24f45dd916963de768f5378afb355350348aafd879e0f442b32
+  [images/vbmeta_vendor.img]=5bafec47682ff49cd2cb3cdcb0daf811820822c23986429ffb2102d0e25b3735
+  [images/super.img]=$EXPECTED_SPARSE_SUPER_SHA256
+)
 
 usage() {
   cat <<'EOF'
@@ -46,7 +61,15 @@ done
 STAGING="$(cd -- "$STAGING" && pwd -P)"
 command -v "$FASTBOOT_BIN" >/dev/null 2>&1 || { echo "fastboot not found" >&2; exit 1; }
 command -v sha256sum >/dev/null 2>&1 || { echo "sha256sum not found" >&2; exit 1; }
+command -v cmp >/dev/null 2>&1 || { echo "cmp not found" >&2; exit 1; }
 command -v python >/dev/null 2>&1 || { echo "python not found" >&2; exit 1; }
+
+if $EXECUTE; then
+  $WIPE || { echo "Execution requires --wipe" >&2; exit 1; }
+  [[ "${PEARL_ACCEPT_UNVERIFIED_310:-}" == "$ACK_VALUE" ]] || {
+    echo "Missing exact risk acknowledgement" >&2; exit 1;
+  }
+fi
 
 required=(
   images/boot-stock.img
@@ -61,31 +84,48 @@ required=(
 for relative in "${required[@]}"; do
   [[ -f "$STAGING/$relative" ]] || { echo "Missing staged file: $relative" >&2; exit 1; }
 done
-(
-  cd "$STAGING"
-  sha256sum -c manifest.sha256
-)
-
-super_path_for_python="$STAGING/images/super.img"
-if command -v cygpath >/dev/null 2>&1; then
-  super_path_for_python="$(cygpath -w "$super_path_for_python")"
-fi
-actual_raw_super_bytes="$(python - "$super_path_for_python" <<'PY'
-import struct,sys
-with open(sys.argv[1], 'rb') as stream:
-    header=stream.read(28)
-if len(header) != 28:
-    raise SystemExit('truncated sparse header')
-magic,major,minor,file_hdr,chunk_hdr,block_size,total_blocks,total_chunks,checksum=struct.unpack('<I4H4I',header)
-if (magic,major,file_hdr,chunk_hdr) != (0xED26FF3A,1,28,12):
-    raise SystemExit('invalid Android sparse v1 header')
-print(block_size*total_blocks)
-PY
-)"
-[[ "$actual_raw_super_bytes" == "$EXPECTED_RAW_SUPER_BYTES" ]] || {
-  echo "Unexpected expanded super size: $actual_raw_super_bytes" >&2
+canonical_manifest="$REPO_ROOT/manifests/experimental-310-carrier.sha256"
+[[ -f "$canonical_manifest" ]] || { echo "Missing canonical carrier manifest" >&2; exit 1; }
+if ! cmp -s "$STAGING/manifest.sha256" "$canonical_manifest"; then
+  echo "Staging manifest does not exactly match the tracked canonical manifest" >&2
   exit 1
+fi
+for relative in "${!EXPECTED_IMAGE_SHA256[@]}"; do
+  file="$STAGING/$relative"
+  actual="$(sha256sum "$file" | awk '{print $1}')"
+  [[ "$actual" == "${EXPECTED_IMAGE_SHA256[$relative]}" ]] || {
+    echo "Staged image hash mismatch: $relative" >&2
+    exit 1
+  }
+  printf '%s: OK\n' "$relative"
+done
+
+verify_sparse_super() {
+  local input="$1" output="$STAGING/.super.raw.verify.$$"
+  local input_for_python="$input" output_for_python="$output" script_for_python="$REPO_ROOT/scripts/unsparse-android-image.py"
+  if command -v cygpath >/dev/null 2>&1; then
+    input_for_python="$(cygpath -w "$input")"
+    output_for_python="$(cygpath -w "$output")"
+    script_for_python="$(cygpath -w "$script_for_python")"
+  fi
+  rm -f "$output"
+  python "$script_for_python" \
+    "$input_for_python" "$output_for_python" --force >/dev/null
+  local bytes actual
+  bytes="$(wc -c < "$output" | awk '{print $1}')"
+  actual="$(sha256sum "$output" | awk '{print $1}')"
+  rm -f "$output"
+  [[ "$bytes" == "$EXPECTED_RAW_SUPER_BYTES" ]] || {
+    echo "Expanded super size mismatch: $bytes" >&2
+    return 1
+  }
+  [[ "$actual" == "$EXPECTED_RAW_SUPER_SHA256" ]] || {
+    echo "Expanded super hash mismatch: $actual" >&2
+    return 1
+  }
+  printf 'images/super.img: sparse and raw payload verified\n'
 }
+verify_sparse_super "$STAGING/images/super.img"
 
 fastboot=("$FASTBOOT_BIN")
 [[ -z "$SERIAL" ]] || fastboot+=( -s "$SERIAL" )
@@ -144,8 +184,20 @@ plan=(
   "reboot||"
 )
 
+validate_plan_entry() {
+  case "$1" in
+    'flash|boot_a|images/boot-stock.img'|'flash|vendor_boot_a|images/vendor_boot.img'|\
+    'flash|dtbo_a|images/dtbo.img'|'flash_sparse|super|images/super.img'|\
+    'flash|vbmeta_system_a|images/vbmeta_system.img'|'flash|vbmeta_vendor_a|images/vbmeta_vendor.img'|\
+    'flash|vbmeta_a|images/vbmeta.img'|'erase|metadata|'|'erase|userdata|'|\
+    'set_active|a|'|'reboot||') ;;
+    *) echo "Internal plan entry rejected: $1" >&2; return 1 ;;
+  esac
+}
+
 printf 'Experimental 310 carrier plan (unverified AVB):\n'
 for entry in "${plan[@]}"; do
+  validate_plan_entry "$entry"
   IFS='|' read -r command arg file <<<"$entry"
   if [[ "$command" == flash ]]; then
     printf '  fastboot flash %s %s\n' "$arg" "$file"
@@ -159,24 +211,27 @@ for entry in "${plan[@]}"; do
 done
 
 $EXECUTE || { echo "DRY_RUN_ONLY"; exit 0; }
-$WIPE || { echo "Execution requires --wipe" >&2; exit 1; }
-[[ "${PEARL_ACCEPT_UNVERIFIED_310:-}" == "$ACK_VALUE" ]] || {
-  echo "Missing exact risk acknowledgement" >&2; exit 1;
-}
 
-for entry in "${plan[@]}"; do
+run_entry() {
+  local entry="$1" command arg file status
+  validate_plan_entry "$entry"
   IFS='|' read -r command arg file <<<"$entry"
-  case "$command" in
+  if case "$command" in
     flash) "${fastboot[@]}" flash "$arg" "$STAGING/$file" ;;
     flash_sparse) "${fastboot[@]}" -S 256M flash "$arg" "$STAGING/$file" ;;
     erase) "${fastboot[@]}" erase "$arg" ;;
     set_active) "${fastboot[@]}" set_active "$arg" ;;
     reboot) "${fastboot[@]}" reboot ;;
-    *) echo "Internal command rejected: $command" >&2; exit 1 ;;
+    *) return 2 ;;
   esac
-  status=$?
-  [[ "$status" == 0 ]] || {
+  then
+    return 0
+  else
+    status=$?
     echo "STOP: $command $arg failed; device was not automatically rebooted" >&2
-    exit "$status"
-  }
+    return "$status"
+  fi
+}
+for entry in "${plan[@]}"; do
+  run_entry "$entry"
 done

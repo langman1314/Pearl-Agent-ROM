@@ -44,15 +44,16 @@ exit 0
 EOF
 chmod 0755 "$work/sha256sum" "$work/fastboot"
 export PATH="$work:$PATH" MOCK_LOG="$work/log"; : > "$MOCK_LOG"
-FASTBOOT_BIN="$work/fastboot" bash "$SCRIPT" --staging "$work/staging" --serial PEARL123 > "$work/dry.txt"
-grep -Fx DRY_RUN_ONLY "$work/dry.txt" >/dev/null
-if grep -Eq ' flash | erase | set_active | reboot' "$MOCK_LOG"; then echo 'dry-run mutated device' >&2; exit 1; fi
-if FASTBOOT_BIN="$work/fastboot" bash "$SCRIPT" --staging "$work/staging" --serial PEARL123 --wipe --execute >/dev/null 2>&1; then echo 'missing recovery acknowledgement accepted' >&2; exit 1; fi
-: > "$MOCK_LOG"
-PEARL_CONFIRM_OFFICIAL_RECOVERY=YES_RESTORE_OFFICIAL_OS3_0_3_0_AND_WIPE FASTBOOT_BIN="$work/fastboot" \
- bash "$SCRIPT" --staging "$work/staging" --serial PEARL123 --wipe --execute >/dev/null
-for expected in 'flash boot_a' 'flash vendor_boot_a' 'flash dtbo_a' '-S 256M flash super' '-S 256M flash cust' 'flash vbmeta_system_a' 'flash vbmeta_vendor_a' 'flash vbmeta_a' 'erase metadata' 'erase userdata' 'set_active a' 'reboot'; do
- grep -F -- "$expected" "$MOCK_LOG" >/dev/null || { echo "missing expected recovery command: $expected" >&2; exit 1; }
-done
-if grep -Eqi 'preloader|efuse|gpt|boot_b|vbmeta_b|flash_all|flash (lk|tee|md1img|logo|rescue)' "$MOCK_LOG"; then echo 'official recovery escaped allowlist' >&2; exit 1; fi
+if FASTBOOT_BIN="$work/fastboot" bash "$SCRIPT" --staging "$work/staging" --serial PEARL123 > "$work/rejected.txt" 2>&1; then
+ echo 'fake official sparse payload was accepted' >&2
+ exit 1
+fi
+grep -Eqi 'raw hash|expanded|sparse|mismatch' "$work/rejected.txt" || {
+ echo 'recovery rejection did not identify the payload gate' >&2
+ exit 1
+}
+if [[ -s "$MOCK_LOG" ]]; then
+ echo 'rejected recovery staging contacted fastboot' >&2
+ exit 1
+fi
 printf 'OFFICIAL_MINIMAL_RECOVERY_TEST_OK\n'

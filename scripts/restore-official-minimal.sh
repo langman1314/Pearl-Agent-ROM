@@ -6,6 +6,9 @@ set -Eeuo pipefail
 export MSYS_NO_PATHCONV=1
 export MSYS2_ARG_CONV_EXCL='*'
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
+
 STAGING=""
 SERIAL=""
 EXECUTE=false
@@ -13,7 +16,9 @@ WIPE=false
 FASTBOOT_BIN="${FASTBOOT_BIN:-fastboot}"
 ACK_VALUE=YES_RESTORE_OFFICIAL_OS3_0_3_0_AND_WIPE
 EXPECTED_SUPER_BYTES=9126805504
+EXPECTED_SUPER_RAW_SHA256=038483b5afccb91c843cd3143380b332750b26c0130bfbb3eb87aa02d088a1f0
 EXPECTED_CUST_BYTES=708837376
+EXPECTED_CUST_RAW_SHA256=d1af2f4310dee2df9fa0de602240dc23a0a36ce68d47211c9801349b74d3cfef
 
 declare -A expected=(
  ["images/boot.img"]=8526d0ff63b6606f4ccda6381f61921e6a56c3bcdd7fa0ace05578863f9a6f82
@@ -70,8 +75,27 @@ if (magic,major,minor,file_h,chunk_h)!=(0xED26FF3A,1,0,28,12): raise SystemExit(
 print(block*total_blocks)
 PY
 }
-[[ "$(sparse_expanded_bytes "$STAGING/images/super.img")" == "$EXPECTED_SUPER_BYTES" ]] || { echo 'Unexpected official super expanded size' >&2; exit 1; }
-[[ "$(sparse_expanded_bytes "$STAGING/images/cust.img")" == "$EXPECTED_CUST_BYTES" ]] || { echo 'Unexpected official cust expanded size' >&2; exit 1; }
+verify_sparse_payload() {
+ local input="$1" expected_bytes="$2" expected_hash="$3" label="$4"
+ local output="$STAGING/.$(basename "$input").raw.verify.$$"
+ local input_for_python="$input" output_for_python="$output" script_for_python="$REPO_ROOT/scripts/unsparse-android-image.py"
+ if command -v cygpath >/dev/null 2>&1; then
+  input_for_python="$(cygpath -w "$input")"
+  output_for_python="$(cygpath -w "$output")"
+  script_for_python="$(cygpath -w "$script_for_python")"
+ fi
+ rm -f "$output"
+ python "$script_for_python" "$input_for_python" "$output_for_python" --force >/dev/null
+ local bytes actual
+ bytes="$(wc -c < "$output" | awk '{print $1}')"
+ actual="$(sha256sum "$output" | awk '{print $1}')"
+ rm -f "$output"
+ [[ "$bytes" == "$expected_bytes" ]] || { echo "$label expanded size mismatch: $bytes" >&2; return 1; }
+ [[ "$actual" == "$expected_hash" ]] || { echo "$label raw hash mismatch: $actual" >&2; return 1; }
+ printf '%s: sparse and raw payload verified\n' "$label"
+}
+verify_sparse_payload "$STAGING/images/super.img" "$EXPECTED_SUPER_BYTES" "$EXPECTED_SUPER_RAW_SHA256" images/super.img
+verify_sparse_payload "$STAGING/images/cust.img" "$EXPECTED_CUST_BYTES" "$EXPECTED_CUST_RAW_SHA256" images/cust.img
 fastboot=("$FASTBOOT_BIN"); [[ -z "$SERIAL" ]] || fastboot+=( -s "$SERIAL" )
 devices="$("$FASTBOOT_BIN" devices 2>&1)"
 if [[ -n "$SERIAL" ]]; then
@@ -101,22 +125,42 @@ plan=(
  'flash|vbmeta_system_a|images/vbmeta_system.img' 'flash|vbmeta_vendor_a|images/vbmeta_vendor.img' 'flash|vbmeta_a|images/vbmeta.img'
  'erase|metadata|' 'erase|userdata|' 'set_active|a|' 'reboot||'
 )
+validate_plan_entry() {
+ case "$1" in
+  'flash|boot_a|images/boot.img'|'flash|vendor_boot_a|images/vendor_boot.img'|'flash|dtbo_a|images/dtbo.img'|\
+  'flash_sparse|super|images/super.img'|'flash_sparse|cust|images/cust.img'|\
+  'flash|vbmeta_system_a|images/vbmeta_system.img'|'flash|vbmeta_vendor_a|images/vbmeta_vendor.img'|'flash|vbmeta_a|images/vbmeta.img'|\
+  'erase|metadata|'|'erase|userdata|'|'set_active|a|'|'reboot||') ;;
+  *) echo "Internal recovery plan entry rejected: $1" >&2; return 1;;
+ esac
+}
+
 echo 'Official OS3.0.3.0 minimal recovery plan:'
 for entry in "${plan[@]}"; do
+ validate_plan_entry "$entry"
  IFS='|' read -r command arg file <<<"$entry"
  case "$command" in flash) echo "  fastboot flash $arg $file";; flash_sparse) echo "  fastboot -S 256M flash $arg $file";; reboot) echo '  fastboot reboot';; *) echo "  fastboot $command $arg";; esac
 done
 $EXECUTE || { echo DRY_RUN_ONLY; exit 0; }
 $WIPE || { echo 'Execution requires --wipe' >&2; exit 1; }
 [[ "${PEARL_CONFIRM_OFFICIAL_RECOVERY:-}" == "$ACK_VALUE" ]] || { echo 'Missing exact official recovery acknowledgement' >&2; exit 1; }
-for entry in "${plan[@]}"; do
+run_entry() {
+ local entry="$1" command arg file status
+ validate_plan_entry "$entry"
  IFS='|' read -r command arg file <<<"$entry"
- case "$command" in
+ if case "$command" in
   flash) "${fastboot[@]}" flash "$arg" "$STAGING/$file";;
   flash_sparse) "${fastboot[@]}" -S 256M flash "$arg" "$STAGING/$file";;
   erase) "${fastboot[@]}" erase "$arg";;
   set_active) "${fastboot[@]}" set_active "$arg";;
   reboot) "${fastboot[@]}" reboot;;
-  *) echo "Internal command rejected: $command" >&2; exit 1;;
+  *) return 2;;
  esac
-done
+ then return 0
+ else
+  status=$?
+  echo "STOP: $command $arg failed; device was not automatically rebooted" >&2
+  return "$status"
+ fi
+}
+for entry in "${plan[@]}"; do run_entry "$entry"; done

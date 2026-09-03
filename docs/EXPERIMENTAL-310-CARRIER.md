@@ -61,7 +61,7 @@ Host acceptance has passed: the full staging manifest rehashed successfully; the
 7. set active slot A;
 8. reboot only after every prior operation succeeds.
 
-The script validates product, unlocked state, anti value, A/B geometry, exact boot/vbmeta capacities, super capacity, sparse expanded size and all SHA-256 values. It invokes the pinned platform-tools capability `fastboot -S 256M flash super` so the host also resplits sparse transport units conservatively. A failed command stops before reboot. Execution requires `--wipe`, `--execute`, and the exact risk acknowledgement environment value.
+The script validates the staging manifest byte-for-byte against the tracked canonical manifest, hashes each required image against fixed repository identities, fully expands `super.img` with `scripts/unsparse-android-image.py`, and requires raw size `9,126,805,504` plus raw SHA-256 `f059a580...9cc43`. It also validates product, unlocked state, anti value, A/B geometry, exact boot/vbmeta capacities and super capacity. It invokes the pinned platform-tools capability `fastboot -S 256M flash super` so the host also resplits sparse transport units conservatively. A failed command stops before reboot. Execution requires `--wipe`, `--execute`, and the exact risk acknowledgement environment value.
 
 ### Phase B — carrier acceptance before root
 

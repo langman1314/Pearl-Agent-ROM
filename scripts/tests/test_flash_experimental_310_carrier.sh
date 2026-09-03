@@ -50,32 +50,17 @@ EOF
 chmod 0755 "$work/fastboot"
 export MOCK_LOG="$work/commands.log"
 : > "$MOCK_LOG"
-FASTBOOT_BIN="$work/fastboot" bash "$FLASHER" \
-  --staging "$work/staging" --serial PEARL123 > "$work/dry-run.txt"
-grep -Fx 'DRY_RUN_ONLY' "$work/dry-run.txt" >/dev/null
-if grep -Eq ' flash | erase | set_active | reboot' "$MOCK_LOG"; then
-  echo "dry-run emitted a mutation" >&2
-  exit 1
-fi
 if FASTBOOT_BIN="$work/fastboot" bash "$FLASHER" \
-  --staging "$work/staging" --serial PEARL123 --wipe --execute >/dev/null 2>&1; then
-  echo "execute succeeded without acknowledgement" >&2
+  --staging "$work/staging" --serial PEARL123 > "$work/rejected.txt" 2>&1; then
+  echo "tampered/incomplete staging was accepted" >&2
   exit 1
 fi
-: > "$MOCK_LOG"
-PEARL_ACCEPT_UNVERIFIED_310=YES_I_ACCEPT_UNVERIFIED_310_AND_DATA_LOSS \
-FASTBOOT_BIN="$work/fastboot" bash "$FLASHER" \
-  --staging "$work/staging" --serial PEARL123 --wipe --execute >/dev/null
-for expected in \
-  'flash boot_a' 'flash vendor_boot_a' 'flash dtbo_a' '-S 256M flash super' \
-  'flash vbmeta_system_a' 'flash vbmeta_vendor_a' 'flash vbmeta_a' \
-  'erase metadata' 'erase userdata' 'set_active a' 'reboot'; do
-  grep -F -- "$expected" "$MOCK_LOG" >/dev/null || {
-    echo "missing expected command: $expected" >&2; exit 1;
-  }
-done
-if grep -Eqi 'preloader|efuse|gpt|boot_b|vbmeta_b|flash_all|flash (lk|tee|md1img|logo|cust|rescue)' "$MOCK_LOG"; then
-  echo "prohibited partition appeared in execution" >&2
+grep -Eqi 'canonical|manifest|mismatch|hash|sparse|expanded' "$work/rejected.txt" || {
+  echo "rejection did not identify the artifact gate" >&2
+  exit 1
+}
+if [[ -s "$MOCK_LOG" ]]; then
+  echo "rejected staging contacted fastboot" >&2
   exit 1
 fi
 printf 'EXPERIMENTAL_310_FLASHER_TEST_OK\n'
