@@ -2,21 +2,22 @@
 
 ## Decision
 
-`pearl_Note12TPro_OS3.0.310.0.WAACNXM_16.0.zip` is preserved byte-for-byte only as an immutable audit input. It is not a firmware baseline, recovery source, partition source, installer source or flash-script source.
+`pearl_Note12TPro_OS3.0.310.0.WAACNXM_16.0.zip` remains rejected as an official, AVB-verifiable firmware baseline or recovery source. Its original ZIP and original flash script remain immutable audit inputs.
 
-The package is a mixed `mytiantian` port whose signed AVB descriptor sizes cannot fit its own logical extents. Disabling verification cannot repair missing signed bytes. Its top-level vbmeta flags were also changed after signing. Status is permanently **REJECTED / NO FLASH**.
+The package is a mixed `mytiantian` port whose signed AVB descriptor sizes cannot fit its own logical extents. Disabling verification cannot repair missing signed bytes, and its top-level vbmeta flags were changed after signing. After this finding, the user separately confirmed prior practical bootability on the target and explicitly accepted using it as an **unverified experimental carrier** when the OS4 candidate proved DSU-only. That narrow operational exception is defined in `docs/EXPERIMENTAL-310-CARRIER.md`; it does not make the AVB chain valid or approve the original flash script.
 
 ## Final payload dependency matrix
 
 | Third-party item | Final use | Decision |
 |---|---|---|
-| `boot.img` / patched boot | none | reject; final Magisk work must start from exact official baseline boot |
-| `vendor_boot.img`, `dtbo.img`, `vbmeta*.img` | none | reject |
-| `super.zst` and every logical partition | none | reject |
+| stock `boot.img`, `vendor_boot.img`, `dtbo.img` | experimental carrier only | byte-identical to the accepted official package; staged with exact hashes |
+| historical patched boot | none | permanently reject; use only the fresh independently reproduced Magisk patch |
+| `vbmeta*.img` | experimental carrier only | required by the known-bootable port but explicitly verification-disabled/inconsistent |
+| `super.zst` and logical payload | experimental carrier only | trusted-tool decompression/sparse conversion and exact round-trip passed; not AVB coherent |
 | `product_a.img` XiaoAi APK | no APK payload | retain only version-exact static compatibility evidence for 507012002 |
 | `cust.img` | none | reject; empty EROFS placeholder |
-| `efuse`, preloader and partition images | none | reject and block from project installer |
-| `flash_all*.bat/.sh` | none | never execute, copy or adapt |
+| `efuse` and `preloader_raw.img` | none | permanently reject and block from every project installer |
+| original `flashl.bat` / any `flash_all*.bat/.sh` | none | never execute, copy or adapt; only the independent fixed-allowlist installer is eligible |
 | bundled Nexus debug APK | none | reject; project release is rebuilt from source and signed with the dedicated project key |
 | Nexus source lineage | reviewed source only | project source is independently built/tested; no third-party binary is copied |
 
@@ -42,14 +43,8 @@ The phone artifact workflow builds only:
 
 Nexus is rebuilt from tracked source, tested and signed independently. XiaoAi APKs are never included; exact configs contain only method/class metadata.
 
-## Remaining device-derived inputs
+## Device-derived status and waiver boundary
 
-No final boot or installer can be approved until the physical device supplies read-only evidence for:
+Physical product, bootloader, anti, slot, partition-name and capacity evidence has been collected. This bootloader supports neither `fastboot fetch` nor `fastboot boot`, so current boot/vbmeta contents could not be exported. The user explicitly waived that backup requirement for the unverified experiment after confirming that no personal data needs preservation.
 
-- product/codename/variant and bootloader state;
-- current-slot and real boot/vbmeta partition map;
-- hashes/backups of both available stock boot/vbmeta slots;
-- anti-rollback variables where exposed;
-- working fastboot/recovery rollback procedure.
-
-These values must come from the target phone, not either ROM script. Until then the project remains **NO FLASH**.
+That waiver permits preparation of a dry-run-gated experimental installer; it does not make the carrier production-verified and does not authorize execution by itself. The accepted official fastboot package remains the recovery anchor, while MediaTek BROM/DA recovery is not treated as guaranteed. Actual flashing still requires the fixed script's device/hash/capacity gates and exact acknowledgement. Status remains **NO FLASH** until a separate execute decision is made.
