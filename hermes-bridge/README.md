@@ -46,8 +46,10 @@ Nexus 的 Hermes MCP server headers 必须保存为 `{"Authorization":"Bearer <m
 
 Hermes 密钥文件：
 
+实际密钥不得写进文档或命令行。安装 Agent 模块并首次重启后，从主机运行 `scripts/provision-hermes-after-root.sh`；该脚本隐藏输入，并只通过 ADB stdin 写入以下 mode-0600 结构：
+
 ```dotenv
-DEEPSEEK_API_KEY=首次启动后写入
+DEEPSEEK_API_KEY=<redacted>
 ```
 
 启动：

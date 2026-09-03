@@ -97,4 +97,4 @@ rootfs 自带空模板，实际运行时 Magisk 模块将持久目录绑定到 c
 /data/pearl-agent/logs/                        supervisor/bridge 日志
 ```
 
-`DEEPSEEK_API_KEY` 只能由首次启动 provisioner 写入 `.env`，不能预置进 rootfs、Magisk ZIP 或 Git。
+`DEEPSEEK_API_KEY` 不能预置进 rootfs、Magisk ZIP 或 Git。Agent 模块首次重启后，使用 `scripts/provision-hermes-after-root.sh` 的隐藏输入流程，经 ADB stdin 原子写入 `.env` 并强制 `0600`；脚本拒绝覆盖已有非空 `.env`，不会把 key 放进命令参数、主机文件或控制台输出。Nexus 主 Agent 的 DeepSeek key 仍需在其 Android 设置 UI 单独录入，不能和 Hermes chroot 的 `.env` 混为同一存储边界。

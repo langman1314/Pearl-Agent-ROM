@@ -32,9 +32,9 @@ Its extracted ramdisk lineage and embedded `magisk`/`magiskinit` matched the sto
 
 This image is retained only as audit evidence. It is not a release artifact and must never be flashed. Final work must regenerate a patch from a fresh hash-checked copy of the official boot through the controlled procedure below.
 
-## Controlled patch procedure gate
+## Controlled patch procedure
 
-A final patched boot may be generated only after the physical device report passes. The procedure must then:
+The final patched boot was generated only after the available physical device identity/fastboot report passed, using this required procedure:
 
 1. copy the exact official boot by hash into a clean staging directory;
 2. use the approved official Magisk 30.7 APK/binaries whose source, release asset and signatures/hashes are recorded;
@@ -59,7 +59,7 @@ The pearl bootloader accepted transfer but rejected non-flashing `fastboot boot`
 
 ## Device-derived prerequisites
 
-Before any `fastboot boot` or `fastboot flash` command is even generated, collect read-only evidence for:
+Before any real `fastboot flash` execution, the generated device-specific plan must collect or reconcile read-only evidence for:
 
 - `ro.product.device`, vendor/system device, fingerprint and build version;
 - bootloader unlocked/secure state;

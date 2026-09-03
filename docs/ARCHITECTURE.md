@@ -28,7 +28,7 @@ HyperOS / XiaoAi
             └─ Hermes MCP Bridge :51338
 ```
 
-Nexus 是手机前台主 Agent；Hermes 是后台深度工作 Agent，不作为平级规划器。
+Nexus 是手机前台主 Agent；Hermes 是后台深度工作 Agent，不作为平级规划器。安装与首次验收完成后，Nexus、Vector、Magisk supervisor、Debian rootfs、MCP token、Hermes queue/memory/workspace 和两套 DeepSeek 配置都驻留手机；PC 只用于刷入、初次配置、取证与恢复，日常运行不依赖 PC 或本项目目录。云端推理仍需要手机自身联网且 DeepSeek API/账号可用，本方案不包含离线本地大模型。
 
 ## 安装载荷
 

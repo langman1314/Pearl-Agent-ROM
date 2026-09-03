@@ -63,7 +63,8 @@ Do not install Vector or Nexus in this stage.
 - [ ] verify installer device/SDK/Magisk/free-space/hash gates;
 - [ ] confirm no partition is written by the module;
 - [ ] inspect private `/dev`, devpts, `/proc`, `/run`, absence of `/dev/block` and absence of sysfs;
-- [ ] provision DeepSeek credentials through mode-0600 files without terminal/log exposure;
+- [ ] run `scripts/provision-hermes-after-root.sh` and verify hidden-input/ADB-stdin/mode-0600 Hermes credential provisioning without terminal, argument or host-file exposure;
+- [ ] launch Nexus, grant its one-time root request, and verify it reads the generated MCP token into the local Bearer header; provision the Nexus main-Agent DeepSeek credential separately through Android UI;
 - [ ] validate authenticated `127.0.0.1:51338/mcp` and reject missing/wrong Bearer tokens;
 - [ ] exercise submit/status/cancel/run and reboot persistence;
 - [ ] force three short crashes and verify fuse/backoff; test disable and one-version rootfs rollback.
@@ -75,7 +76,7 @@ Exit criterion: Hermes survives reboot and fails closed without token while Andr
 - [ ] install hash-approved Vector 2.2 and the approved Nexus release APK;
 - [ ] enable Zygisk/Vector scope only for `com.miui.voiceassist`;
 - [ ] prove no other package is in module scope;
-- [ ] verify installed XiaoAi exact version is official `507009011` before enabling hooks;
+- [ ] on the selected 310 carrier, verify XiaoAi exact version `507012002` and full-APK SHA-256 `326fe0601b11698e70f96aca5dc05d1c783cf675ebc872024e96b405aaf64406` before enabling hooks (the official Android 15 recovery path instead uses its separately bound `507009011` identity);
 - [ ] verify unsupported or fallback config does not install hooks;
 - [ ] reboot and capture Nexus/Vector/module logs without API keys or MCP token.
 

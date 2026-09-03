@@ -61,8 +61,20 @@ The script installs only an APK and two Magisk modules, cleans temporary files a
 1. confirm Magisk and `zygisk_vector` are healthy;
 2. open the Vector manager and enable Nexus only for the exact XiaoAi package/process scope required by the compatibility config;
 3. verify Nexus signer/version and exact XiaoAi hash gate before enabling takeover;
-4. provision DeepSeek and optional Telegram credentials through the documented mode-0600 files, never command-line logs;
-5. validate authenticated localhost MCP, Hermes submit/status/cancel/run, reboot persistence, fail-open native XiaoAi, crash fuse/backoff and one-version rollback.
+4. dry-run then execute `scripts/provision-hermes-after-root.sh`; it prompts for the Hermes `DEEPSEEK_API_KEY` without echo, transfers it only over ADB stdin, atomically writes mode-0600 `.env`, refuses overwrite and reboots;
+5. open Nexus, grant its one-time Magisk root request so it can read the generated MCP token and install the localhost Bearer header, then enter the Nexus main-Agent DeepSeek endpoint/model/key in its Android UI (this is separate from Hermes `.env`);
+6. validate authenticated localhost MCP, Hermes submit/status/cancel/run, reboot persistence, fail-open native XiaoAi, crash fuse/backoff and one-version rollback.
+
+Hermes credential dry-run and execution commands are:
+
+```bash
+bash scripts/provision-hermes-after-root.sh --serial 7TV8X4RS8DAAIN4P
+PEARL_ACCEPT_SECRET_PROVISION=YES_PROVISION_HERMES_DEEPSEEK_SECRET \
+  bash scripts/provision-hermes-after-root.sh \
+  --serial 7TV8X4RS8DAAIN4P --execute
+```
+
+The second command displays a hidden prompt; paste the key there. Do not append the key to the command or save it in this repository.
 
 ## OS4 and recovery boundary
 

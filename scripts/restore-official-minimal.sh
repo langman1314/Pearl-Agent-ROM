@@ -62,19 +62,6 @@ for rel in "${!expected[@]}"; do
  [[ "$actual" == "${expected[$rel]}" ]] || { echo "Official image hash mismatch: $rel" >&2; exit 1; }
  printf '%s: OK\n' "$rel"
 done
-sparse_expanded_bytes() {
- local path="$1" native="$1"
- if command -v cygpath >/dev/null 2>&1; then native="$(cygpath -w "$path")"; fi
- python - "$native" <<'PY'
-import pathlib,struct,sys
-p=pathlib.Path(sys.argv[1])
-with p.open('rb') as f: h=f.read(28)
-if len(h)!=28: raise SystemExit('short sparse header')
-magic,major,minor,file_h,chunk_h,block,total_blocks,total_chunks,checksum=struct.unpack('<I4H4I',h)
-if (magic,major,minor,file_h,chunk_h)!=(0xED26FF3A,1,0,28,12): raise SystemExit('invalid sparse header')
-print(block*total_blocks)
-PY
-}
 verify_sparse_payload() {
  local input="$1" expected_bytes="$2" expected_hash="$3" label="$4"
  local output="$STAGING/.$(basename "$input").raw.verify.$$"

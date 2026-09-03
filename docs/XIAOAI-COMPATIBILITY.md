@@ -22,7 +22,7 @@ Validation required all ZIP entry CRCs, `aapt dump badging`, and `apksigner veri
 
 ## Original third-party input APK
 
-The original third-party ROM input remains **NO FLASH**. Its independently extracted `product_a.img` contains a different XiaoAi build and is retained only as read-only compatibility evidence for that input:
+The original third-party ROM remains AVB-inconsistent and is not an official/production baseline. Under the user's explicit experimental exception, its controlled 310 carrier is now the selected first boot path; the independently extracted `product_a.img` therefore supplies the exact XiaoAi identity and static hook evidence for that experimental carrier:
 
 | Field | Original-input value |
 |---|---|
@@ -120,7 +120,7 @@ For this version old `cb0.eb.A0(Instruction)` does not exist: `cb0.eb` is `Templ
 Nexus includes independent version-exact assets:
 
 - `app/src/main/assets/hooks/com.miui.voiceassist/507009011/config.json` — mandatory official recovery baseline;
-- `app/src/main/assets/hooks/com.miui.voiceassist/507012002/config.json` — original third-party input compatibility only;
+- `app/src/main/assets/hooks/com.miui.voiceassist/507012002/config.json` — exact static compatibility config for the selected experimental 310 carrier;
 - existing `507013003` — legacy target metadata only; it is now diagnostic-only until its exact APK SHA-256 is independently recovered and bound.
 
 JVM tests parse the official and original-input assets and lock every audited owner, method, parameter, return descriptor and APK hash. Config resolution remains fail-closed:
@@ -134,15 +134,15 @@ JVM tests parse the official and original-input assets and lock every audited ow
 
 ## Remaining real-device gate
 
-Static APK, Dex and AVB compatibility are necessary but not sufficient. Before calling official `507009011` production-supported, the actual pearl device must prove:
+Static APK/Dex compatibility is necessary but not sufficient. Before enabling takeover for the selected carrier's `507012002` (or calling official-recovery `507009011` production-supported), the actual pearl device must prove:
 
 1. Zygisk scope contains only `com.miui.voiceassist`;
 2. power-button and original XiaoAi wake phrase still work before Nexus provisioning;
 3. input capture records the correct dialog/query once;
-4. `qb0.ua.z0` target capture occurs for text and TTS turns;
+4. the exact response target is captured for text and TTS turns: `cb0.db.A0` on carrier `507012002`, or `qb0.ua.z0` on official-recovery `507009011`;
 5. native stream blocking happens only for an active injected turn;
 6. timeout/network/service failure returns to native XiaoAi without a blank card;
 7. injected `<FINAL>` ends rendering and no duplicate TTS plays;
 8. disabling Vector/Nexus immediately restores fully native behavior.
 
-Until these pass, status is **static-compatible / device-validation-required**, not flash-ready.
+Until these pass, status is **static-compatible / device-validation-required**: the carrier may proceed only through its separate stock-boot flash gate, but Nexus takeover is not yet device-accepted or eligible to remain enabled.

@@ -68,7 +68,7 @@ No Android application partition is mounted into the chroot. The Hermes terminal
 - restores the previous rootfs if activation fails;
 - clears maintenance only after activation metadata is published; a killed/aborted installer remains fail-closed and requires reinstall rather than starting a partial tree.
 
-The module does not contain API keys. The first-boot provisioner must write `$HERMES_HOME/.env` with mode `0600`; `config.yaml` contains behavior only and is also forced to mode `0600`.
+The module does not contain API keys. After the first module reboot, `scripts/provision-hermes-after-root.sh` prompts without echo and writes `$HERMES_HOME/.env` atomically over ADB stdin with mode `0600`; it refuses to overwrite a non-empty file. `config.yaml` contains behavior only and is also forced to mode `0600`.
 
 ## Controls
 
@@ -107,7 +107,7 @@ Without local Linux/WSL, run the manually triggered GitHub workflow `.github/wor
 Before installation:
 
 - confirm target Magisk source/version and patched-boot provenance;
-- validate official Android 15 `OS3.0.3.0.VLHCNXM` SELinux behavior for `chroot`, mounts, loopback network, DNS and the private devpts instance;
+- validate the selected 310 Android 16 carrier's SELinux behavior for `chroot`, mounts, loopback network, DNS and the private devpts instance (repeat separately if operating on the official Android 15 recovery baseline);
 - validate idle RAM, CPU, temperature, restart fuse, and Doze behavior;
 - provision DeepSeek credentials without logging them;
 - validate Nexus can enumerate the five MCP tools over `127.0.0.1:51338/mcp`;
