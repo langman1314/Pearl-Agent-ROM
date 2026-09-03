@@ -45,6 +45,18 @@ A final patched boot may be generated only after the physical device report pass
 7. inspect embedded vbmeta/footer behavior explicitly and never describe flags=3 as signed AVB;
 8. test only through the device-specific slot/rollback plan approved from actual fastboot variables.
 
+## Fresh controlled patch result
+
+The procedure has now been completed without flashing. The Magisk app already installed on the phone was pulled and proved byte-identical to official Magisk 30.7 APK SHA-256 `e0d32d2123532860f97123d927b1bb86c4e08e6fd8a48bfc6b5bee0afae9ebd5`. Its ARM64 patch components processed the exact accepted stock boot in isolated `/data/local/tmp` storage with `KEEPVERITY=true`, `KEEPFORCEENCRYPT=true`, `PATCHVBMETAFLAG=false`, `RECOVERYMODE=false`; all phone staging files were then removed.
+
+Two independent clean runs produced exactly the same 67,108,864-byte image:
+
+`f3cb3ca2353315bc96694cd17d400b71108864f28ff4ef8a7260c50f69572005`
+
+Pinned `magiskboot` comparison found the stock and patched kernel identical at SHA-256 `42c827b5...b801`; only ramdisk changed (`7d935a76...5247` to `1a70c97c...5068`) with the expected `.backup` and `overlay.d` additions. Boot header v4, kernel size and partition size remain compatible. The embedded vbmeta remains flags `0` and its RSA structure verifies, while its old boot hash descriptor correctly fails after the ramdisk change; this image is not represented as AVB-signed stock.
+
+The pearl bootloader accepted transfer but rejected non-flashing `fastboot boot` as `unknown command`, so no temporary execution occurred. The image is available only in the host staging manifest and may be written to `boot_a` solely after the experimental 310 stock-boot carrier passes its clean Phase-B acceptance. Exact stock restoration is separately gated by `scripts/switch-experimental-310-boot.sh --mode stock`.
+
 ## Device-derived prerequisites
 
 Before any `fastboot boot` or `fastboot flash` command is even generated, collect read-only evidence for:
@@ -53,7 +65,7 @@ Before any `fastboot boot` or `fastboot flash` command is even generated, collec
 - bootloader unlocked/secure state;
 - `current-slot`, slot count and `has-slot:boot`/`has-slot:vbmeta` where exposed;
 - actual `/dev/block/by-name` boot/vbmeta mapping;
-- hashes and external backups of every available stock boot/vbmeta slot;
+- hashes and external backups of every available stock boot/vbmeta slot for production acceptance; the bootloader exposed neither `fetch` nor temporary `boot`, and the user explicitly waived this item only for the unverified 310 experiment;
 - anti-rollback variables where exposed;
 - working recovery/fastboot access independent of Android userspace.
 
@@ -70,4 +82,4 @@ The first boot experiment requires a separately reviewed rollback procedure that
 - records every proposed command before execution;
 - can restore stock boot from fastboot/recovery if Android does not start.
 
-Current status remains **NO FLASH**. No final patched boot exists yet.
+Current status remains **NO FLASH / EXECUTION NOT YET AUTHORIZED**. The fresh patch exists and is host-approved for the separately gated experimental carrier sequence, but has not been written to the phone.
