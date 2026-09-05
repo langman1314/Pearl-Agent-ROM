@@ -43,7 +43,13 @@ class Entrance : IXposed() {
         scope.launch(Dispatchers.IO) {
             val ctx = ContextProvider.await()
             val client = AgentRuntimeClient(ctx)
-            client.connectAndAwait()
+            if (!client.connectAndAwait()) {
+                com.niki914.nexus.xposed.api.util.xtlog(
+                    "NexusRuntime",
+                    "runtime service unavailable; leaving native assistant untouched",
+                )
+                return@launch
+            }
             XRepo.init(ctx, XIpcDomainSettingsStore(client))
 
             HookLocalSettings.update(ctx, client)

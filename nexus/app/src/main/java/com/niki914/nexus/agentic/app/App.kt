@@ -1,6 +1,8 @@
 package com.niki914.nexus.agentic.app
 
 import android.app.Application
+import android.content.Intent
+import android.util.Log
 import androidx.appcompat.app.AppCompatDelegate
 import com.google.android.material.color.DynamicColors
 import com.niki914.nexus.agentic.app.conversation.ConversationRepo
@@ -8,6 +10,7 @@ import com.niki914.nexus.agentic.repo.HermesMcpProvisioner
 import com.niki914.nexus.agentic.repo.UpdateCheckHolder
 import com.niki914.nexus.agentic.repo.XRepo
 import com.niki914.nexus.agentic.runtime.createAppRuntimeBridge
+import com.niki914.nexus.agentic.runtime.service.AgentRuntimeService
 import com.niki914.nexus.agentic.runtime.settings.RuntimeEnvironment
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +26,12 @@ class App : Application() {
         XRepo.init(this.applicationContext)
         ConversationRepo.init(this.applicationContext)
         RuntimeEnvironment.install(createAppRuntimeBridge())
+        try {
+            startForegroundService(Intent(this, AgentRuntimeService::class.java))
+        } catch (error: RuntimeException) {
+            // XiaoAi remains fail-open if Android refuses a background service start.
+            Log.w("NexusRuntime", "Agent runtime service start was refused", error)
+        }
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
         DynamicColors.applyToActivitiesIfAvailable(this)
         applicationScope.launch {

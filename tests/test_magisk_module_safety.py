@@ -65,6 +65,15 @@ class UpgradeMaintenanceSafetyTest(unittest.TestCase):
         restart_log = script.index('pearl_log "Restarting Hermes bridge', after_start)
         self.assertLess(after_start, restart_log)
 
+    def test_supervisor_requests_nexus_runtime_without_breaking_fail_open(self) -> None:
+        script = text("service.sh")
+        request = script.index("am start-foreground-service")
+        supervisor_loop = script.index("crash_count=0", request)
+        self.assertLess(request, supervisor_loop)
+        self.assertIn("com.niki914.nexus.agentic/.runtime.service.AgentRuntimeService", script)
+        self.assertIn("Nexus Agent runtime unavailable; XiaoAi remains native", script)
+        self.assertNotIn("am start-foreground-service \\\n    -n com.niki914.nexus.agentic/.runtime.service.AgentRuntimeService \\\n    >/dev/null 2>&1 || exit", script)
+
     def test_boot_mounts_and_manual_enable_fail_closed(self) -> None:
         post_fs = text("post-fs-data.sh")
         marker_check = post_fs.index('[ -f "$MAINTENANCE_FILE" ]')

@@ -106,6 +106,16 @@ command -v setsid >/dev/null 2>&1 || {
   exit 1
 }
 
+if pm path com.niki914.nexus.agentic >/dev/null 2>&1; then
+  if am start-foreground-service \
+    -n com.niki914.nexus.agentic/.runtime.service.AgentRuntimeService \
+    >/dev/null 2>&1; then
+    pearl_log "service: Nexus Agent runtime requested"
+  else
+    pearl_log "service: Nexus Agent runtime unavailable; XiaoAi remains native"
+  fi
+fi
+
 crash_count=0
 backoff=2
 while [ ! -f "$DISABLED_FILE" ] && [ ! -f "$MAINTENANCE_FILE" ]; do
