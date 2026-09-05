@@ -40,11 +40,11 @@ adb=("$ADB_BIN")
 
 nexus="$RELEASE_DIR/nexus-1.0.1-pearl.2-release.apk"
 vector="$RELEASE_DIR/Vector-v2.2-3080-Release.zip"
-agent="$RELEASE_DIR/pearl-agent-magisk-0.1.4-5.zip"
+agent="$RELEASE_DIR/pearl-agent-magisk-0.1.5-6.zip"
 declare -A expected=(
   ["$nexus"]=99778de7820e8b3c19712a44ef921cddb778ba26156c7abd6593b7fd97b9988a
   ["$vector"]=9ee8323575d615f7b3f1076ff60b2a63a49390ef11881b52632311a37f6f79cc
-  ["$agent"]=0ea3add349725f2e9d57b602ea11c669f597f624750b725a7bfc110689aa87ea
+  ["$agent"]=6c1b03633c0e69d35558e94cf2e9590129ab3f91120f99c423c286cf42304a0c
 )
 for file in "$nexus" "$vector" "$agent"; do
   [[ -f "$file" ]] || { echo "Missing approved artifact: $file" >&2; exit 1; }
@@ -75,7 +75,7 @@ agent_adb="$(adb_host_path "$agent")"
 printf 'Post-root deployment plan:\n'
 printf '  adb install -r nexus-1.0.1-pearl.2-release.apk\n'
 printf '  magisk --install-module Vector-v2.2-3080-Release.zip\n'
-printf '  magisk --install-module pearl-agent-magisk-0.1.4-5.zip\n'
+printf '  magisk --install-module pearl-agent-magisk-0.1.5-6.zip\n'
 printf '  root sync\n'
 printf '  adb reboot\n'
 $EXECUTE || { echo "DRY_RUN_ONLY"; exit 0; }

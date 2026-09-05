@@ -125,6 +125,16 @@ class UpgradeMaintenanceSafetyTest(unittest.TestCase):
         self.assertNotIn('if [ ! -f "$DATA_ROOT/config/hermes-bridge.json" ]', script)
         self.assertNotIn('if [ ! -f "$DATA_ROOT/hermes-home/config.yaml" ]', script)
 
+    def test_installer_replaces_only_invalid_mcp_tokens_atomically(self) -> None:
+        script = text("customize.sh")
+        self.assertIn("mcp_token_is_valid()", script)
+        self.assertIn("grep -Eq '^[0-9a-f]{64}$'", script)
+        self.assertIn('[ "$unique_chars" -ge 8 ]', script)
+        self.assertIn('if ! mcp_token_is_valid "$MCP_TOKEN_FILE"; then', script)
+        self.assertIn('token_tmp="$MCP_TOKEN_FILE.new.$$"', script)
+        self.assertIn('mcp_token_is_valid "$token_tmp"', script)
+        self.assertIn('mv -f "$token_tmp" "$MCP_TOKEN_FILE"', script)
+
     def test_installer_detects_zero_filled_runtime_and_syncs_persistence(self) -> None:
         script = text("customize.sh")
         common = text("lib/common.sh")

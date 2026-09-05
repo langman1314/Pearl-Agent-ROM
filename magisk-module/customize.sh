@@ -195,15 +195,32 @@ if [ ! -f "$DATA_ROOT/hermes-home/.env" ]; then
   : > "$DATA_ROOT/hermes-home/.env"
 fi
 chmod 0600 "$DATA_ROOT/hermes-home/.env"
-if [ ! -f "$MCP_TOKEN_FILE" ]; then
+mcp_token_is_valid() {
+  candidate="$1"
+  [ -f "$candidate" ] || return 1
+  [ "$(wc -c < "$candidate" | tr -d ' ')" = 64 ] || return 1
+  grep -Eq '^[0-9a-f]{64}$' "$candidate" || return 1
+  unique_chars="$(awk '{ for (i = 1; i <= length($0); i++) seen[substr($0, i, 1)] = 1 } END { print length(seen) }' "$candidate")"
+  [ "$unique_chars" -ge 8 ]
+}
+if ! mcp_token_is_valid "$MCP_TOKEN_FILE"; then
+  ui_print "- Replacing invalid MCP bearer token"
+  token_tmp="$MCP_TOKEN_FILE.new.$$"
   old_umask="$(umask)"
   umask 077
-  head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$MCP_TOKEN_FILE"
+  head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$token_tmp"
   umask "$old_umask"
+  chmod 0600 "$token_tmp"
+  mcp_token_is_valid "$token_tmp" || {
+    rm -f "$token_tmp"
+    abort "! Generated MCP token failed format and entropy checks"
+  }
+  mv -f "$token_tmp" "$MCP_TOKEN_FILE" || {
+    rm -f "$token_tmp"
+    abort "! Could not atomically publish MCP bearer token"
+  }
 fi
 chmod 0600 "$MCP_TOKEN_FILE"
-token_length="$(wc -c < "$MCP_TOKEN_FILE" | tr -d ' ')"
-[ "$token_length" -ge 64 ] || abort "! Generated MCP token is unexpectedly short"
 
 restore_after_activation_failure() {
   reason="$1"

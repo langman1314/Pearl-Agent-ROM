@@ -180,7 +180,7 @@ if [[ "$PHASE" == agent ]]; then
   verify_package nexus "$NEXUS_PACKAGE" "$NEXUS_VERSION" "$NEXUS_SHA256" true
   if capture agent-module "${adb[@]}" shell su -c 'cat /data/adb/modules/pearl_agent/module.prop'; then
     check_contains agent-module-id 'id=pearl_agent' "$CAPTURED"
-    check_contains agent-module-version 'version=0.1.4' "$CAPTURED"
+    check_contains agent-module-version 'version=0.1.5' "$CAPTURED"
   fi
   if capture vector-module "${adb[@]}" shell su -c 'cat /data/adb/modules/zygisk_vector/module.prop'; then
     check_contains vector-module-id 'id=zygisk_vector' "$CAPTURED"
@@ -195,6 +195,8 @@ token=/data/adb/pearl-agent/data/config/mcp-token
 test "$(stat -c %a "$envf")" = 600 &&
 test "$(stat -c %a "$token")" = 600 &&
 test "$(wc -c < "$token" | tr -d "[:space:]")" = 64 &&
+grep -Eq "^[0-9a-f]{64}$" "$token" &&
+test "$(awk '\''{ for (i = 1; i <= length($0); i++) seen[substr($0, i, 1)] = 1 } END { print length(seen) }'\'' "$token")" -ge 8 &&
 test "$(grep -c "^DEEPSEEK_API_KEY=[^[:space:]][^[:space:]]*$" "$envf" | tr -d "[:space:]")" = 1 &&
 echo secret-metadata=valid || echo secret-metadata=invalid' && check_eq secret-metadata secret-metadata=valid "$CAPTURED"
   capture_root_script supervisor 'f=/data/adb/pearl-agent/run/supervisor.pid

@@ -7,7 +7,7 @@ The physical carrier and Magisk gates have now executed. The 310 carrier accepta
 Current host-only directories:
 
 - carrier provenance only: `D:\PearlAgentBuild\carrier-310-staging`
-- current Agent artifacts: `D:\PearlAgentBuild\controlled-release-v6`
+- current Agent artifacts: `D:\PearlAgentBuild\controlled-release-v7`
 - retired Agent sets: `D:\PearlAgentBuild\controlled-release` and `controlled-release-v2`
 - device evidence: `D:\PearlAgentBuild\device-evidence`
 - official recovery anchor: preserved `OS3.0.3.0.VLHCNXM` fastboot archive/extraction
@@ -56,7 +56,7 @@ Confirm boot, ADB, Magisk 30.7 and `su`. Then reboot to fastboot and prove `--mo
 
 ## Gate 5 — data-only Agent deployment
 
-Run `scripts/deploy-agent-after-root.sh` against `D:\PearlAgentBuild\controlled-release-v6` without `--execute`. It requires pearl SDK 36 and exact hashes for Nexus pearl.2, stable Vector v2.2 and Agent module `0.1.4-5` SHA-256 `0ea3add3...aa87ea`. After review, its execution path requires the exact `PEARL_ACCEPT_AGENT_DEPLOY` acknowledgement.
+Run `scripts/deploy-agent-after-root.sh` against `D:\PearlAgentBuild\controlled-release-v7` without `--execute`. It requires pearl SDK 36 and exact hashes for Nexus pearl.2, stable Vector v2.2 and Agent module `0.1.5-6` SHA-256 `6c1b0363...304a0c`. After review, its execution path requires the exact `PEARL_ACCEPT_AGENT_DEPLOY` acknowledgement.
 
 The script installs only an APK and two Magisk modules, requires the Agent installer to deep-scan Python sources, import Hermes/MCP, exclude the known corrupt rootfs from rollback, atomically publish build metadata and force F2FS synchronization. The host performs another root `sync` before cleaning temporary files and rebooting. It never flashes a partition and intentionally does not enable Xposed scope. After reboot:
 
