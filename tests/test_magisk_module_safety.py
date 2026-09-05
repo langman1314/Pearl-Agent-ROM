@@ -28,16 +28,27 @@ class UpgradeMaintenanceSafetyTest(unittest.TestCase):
         publish = script.index('mv "$stage" "$ROOTFS"', extract)
         build_record = script.index('"$STATE_ROOT/installed-build.json"', publish)
         permissions = script.index("set_perm_recursive", build_record)
-        leave = script.index('rm -f "$MAINTENANCE_FILE"', permissions)
-        success_message = script.index('ui_print "- Installation staged safely"', leave)
+        state_sync = script.index(
+            'sync || restore_after_activation_failure "Could not synchronize activated Agent state"',
+            permissions,
+        )
+        leave = script.index('rm -f "$MAINTENANCE_FILE"', state_sync)
+        final_sync = script.index("if ! sync; then", leave)
+        retain = script.index('touch "$MAINTENANCE_FILE"', final_sync)
+        success_message = script.index(
+            'ui_print "- Installation staged safely and synchronized"', retain
+        )
         self.assertLess(enter, stop)
         self.assertLess(stop, unmount)
         self.assertLess(unmount, extract)
         self.assertLess(extract, publish)
         self.assertLess(publish, build_record)
         self.assertLess(build_record, permissions)
-        self.assertLess(permissions, leave)
-        self.assertLess(leave, success_message)
+        self.assertLess(permissions, state_sync)
+        self.assertLess(state_sync, leave)
+        self.assertLess(leave, final_sync)
+        self.assertLess(final_sync, retain)
+        self.assertLess(retain, success_message)
 
     def test_supervisor_observes_maintenance_at_every_restart_boundary(self) -> None:
         script = text("service.sh")
@@ -89,13 +100,49 @@ class UpgradeMaintenanceSafetyTest(unittest.TestCase):
         self.assertLess(permissions, reinstall_clear)
         self.assertLess(reinstall_clear, leave)
     def test_installer_validates_python_inside_chroot_tree(self) -> None:
-        script = text("customize.sh")
-        self.assertNotIn('[ -x "$stage/opt/pearl-agent/venv/bin/python" ]', script)
+        common = text("lib/common.sh")
         self.assertIn(
-            '[ "$(readlink "$stage/opt/pearl-agent/venv/bin/python3")" != /usr/bin/python3 ]',
+            '[ "$(readlink "$tree/opt/pearl-agent/venv/bin/python3")" = /usr/bin/python3 ]',
+            common,
+        )
+        self.assertIn('[ -x "$tree/usr/bin/python3.11" ]', common)
+        self.assertIn('/usr/bin/python3.11 -B -I -S -c', common)
+        self.assertIn('/opt/pearl-agent/venv/bin/python -B -c', common)
+        self.assertIn('from run_agent import AIAgent', common)
+        self.assertIn('from mcp.server import MCPServer', common)
+        self.assertIn('import pearl_hermes_bridge', common)
+        self.assertIn('if b"\\0" in p.read_bytes()', common)
+
+    def test_installer_detects_zero_filled_runtime_and_syncs_persistence(self) -> None:
+        script = text("customize.sh")
+        common = text("lib/common.sh")
+        self.assertIn("EXPECTED_BUILD_JSON_SHA256=", common)
+        self.assertIn("EXPECTED_RE_INIT_SHA256=", common)
+        self.assertIn('rootfs_runtime_is_valid "$stage" true', script)
+        self.assertIn('rootfs_runtime_is_valid "$ROOTFS"', script)
+        self.assertIn('rootfs_runtime_is_valid "$ROOTFS"', common)
+        self.assertIn('build_record_tmp="$STATE_ROOT/installed-build.json.new.$$"', script)
+        self.assertIn('mv -f "$build_record_tmp" "$STATE_ROOT/installed-build.json"', script)
+        self.assertIn("restore_after_activation_failure()", script)
+        self.assertIn(
+            'mv "$stage" "$ROOTFS" ||\n  restore_after_activation_failure "Could not activate new rootfs"',
             script,
         )
-        self.assertIn('[ ! -x "$stage/usr/bin/python3.11" ]', script)
+        self.assertNotIn("previous verified rootfs restored", script)
+        self.assertIn('touch "$MAINTENANCE_FILE"', script)
+        self.assertIn('mv -f "$rollback_record" "$STATE_ROOT/installed-build.json"', script)
+        self.assertIn('rm -f "$STATE_ROOT/installed-build.json"', script)
+        self.assertGreaterEqual(script.count("sync"), 6)
+
+    def test_corrupt_existing_rootfs_is_not_kept_as_rollback(self) -> None:
+        script = text("customize.sh")
+        validate = script.index('if rootfs_runtime_is_valid "$ROOTFS"; then')
+        preserve = script.index('mv "$ROOTFS" "$PREVIOUS_ROOTFS"', validate)
+        reject = script.index('ui_print "- Existing rootfs is corrupt; excluding it from rollback"', preserve)
+        remove = script.index('rm -rf "$ROOTFS"', reject)
+        self.assertLess(validate, preserve)
+        self.assertLess(preserve, reject)
+        self.assertLess(reject, remove)
 
 
 class PayloadRejectionSafetyTest(unittest.TestCase):

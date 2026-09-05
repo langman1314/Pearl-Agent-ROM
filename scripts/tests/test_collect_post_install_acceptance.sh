@@ -14,6 +14,10 @@ set -Eeuo pipefail
 printf '%q ' "$@" >> "$MOCK_ADB_LOG"
 printf '\n' >> "$MOCK_ADB_LOG"
 joined="$*"
+if [[ "$joined" == 'shell su -c sh' ]]; then
+  root_script="$(cat)"
+  joined="$joined $root_script"
+fi
 case " $joined " in
   *'>'*|*' push '*|*' install '*|*' uninstall '*|*' reboot '*|*' remount '*|*' flash '*|*' erase '*|*' format '*|*' set_active '*|*' update '*|*' dd '*|*' mkfs '*|*' wipe '*|*' setprop '*|*' svc '*|*' kill '*|*' rm '*|*' chmod '*|*' chown '*|*' mount '*|*' tee '*)
     echo "Mutation primitive rejected by mock: $joined" >&2; exit 98 ;;
@@ -46,7 +50,7 @@ case "$joined" in
   'shell cmd package list packages --show-versioncode com.niki914.nexus.agentic') echo 'package:com.niki914.nexus.agentic versionCode:8' ;;
   'shell pm path com.niki914.nexus.agentic') echo 'package:/data/app/~~abc==/com.niki914.nexus.agentic-def==/base.apk' ;;
   *"sha256sum '/data/app/~~abc==/com.niki914.nexus.agentic-def==/base.apk'"*) echo '99778de7820e8b3c19712a44ef921cddb778ba26156c7abd6593b7fd97b9988a  /data/app/base.apk' ;;
-  *'cat /data/adb/modules/pearl_agent/module.prop'*) printf 'id=pearl_agent\nversion=0.1.0\nversionCode=1\n' ;;
+  *'cat /data/adb/modules/pearl_agent/module.prop'*) printf 'id=pearl_agent\nversion=0.1.2\nversionCode=3\n' ;;
   *'cat /data/adb/modules/zygisk_vector/module.prop'*) printf 'id=zygisk_vector\nversion=v2.2\nversionCode=3080\n' ;;
   *'cat /data/adb/pearl-agent/rootfs/opt/pearl-agent/BUILD.json'*) printf '{"architecture": "arm64", "hermes_commit": "a2e19d484cb5591df8dafe667c93345b62d9bf06"}\n' ;;
   *'secret-metadata=valid'*) echo 'secret-metadata=valid' ;;

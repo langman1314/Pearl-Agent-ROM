@@ -21,7 +21,9 @@ Exact workflow provenance is tracked at `manifests/phone-artifacts-e0dca95.prove
 | Artifact | Bytes | SHA-256 |
 |---|---:|---|
 | `pearl-agent-magisk-0.1.0-1.zip` (original CI) | `240,788,005` | `b4cbb87957798043a2c427eb6dc0431877d9f214b19646b29a2604f2c81bdf7c` |
-| `pearl-agent-magisk-0.1.0-1.zip` (device-install hotfix) | `240,788,073` | `948a6c1ce70854a9167ca9bf1874e19e3bf08ea243f3be499215940a67cfe941` |
+| `pearl-agent-magisk-0.1.0-1.zip` (device-install symlink hotfix, retired) | `240,788,073` | `948a6c1ce70854a9167ca9bf1874e19e3bf08ea243f3be499215940a67cfe941` |
+| `pearl-agent-magisk-0.1.1-2.zip` (pre-release persistence draft, retired) | `242,125,393` | `6785e0ad777dd5fa5bad56d12a4c520dce0b09bc23ab3fcfce8fcde1e3ac6754` |
+| `pearl-agent-magisk-0.1.2-3.zip` (reviewed F2FS persistence fix) | `242,125,385` | `386bcc1b4a383389343d65c8323250a2b03eba50a4c6d7e035ba5f33be10a7d8` |
 | `pearl-hermes-bookworm-arm64-a2e19d484cb5.tar.zst` | `240,465,642` | `53f59ea09bb065643a0bc8de49b727fbf1b386a3b2cef2c564e329037b70cb87` |
 | `zstd-arm64-static` | `1,647,144` | `a24c13c263518fc5b565407ecf0661b4cb03f724f77f0fe185be854b9a96bc09` |
 
@@ -29,14 +31,14 @@ The rootfs sidecar, dependency freeze, dpkg list, build JSON, host package list 
 
 ## Experimental device deployment set
 
-The complete non-stock deployment set is copied to the host-only `D:\PearlAgentBuild\controlled-release-v2` directory and tracked by `manifests/experimental-agent-release.sha256`. The original `controlled-release` directory remains unchanged for provenance. Its Agent ZIP must not be installed: physical testing proved its host-namespace `-x` check follows the chroot venv's absolute `/usr/bin/python3` link against Android and aborts even though the archived interpreter is complete.
+The current non-stock deployment set is copied to the host-only `D:\PearlAgentBuild\controlled-release-v4` directory and tracked by `manifests/experimental-agent-release.sha256`. The earlier `controlled-release`, `controlled-release-v2`, and pre-release `controlled-release-v3` directories remain unchanged for provenance and none of their Agent ZIPs may be installed. Physical testing proved the original package incorrectly resolved the chroot venv's absolute `/usr/bin/python3` link against Android. The v2 installer fixed that check, but its multi-gigabyte extraction and metadata publication returned without `sync`; an immediate host reboot then left some F2FS files with correct sizes but zero-filled data, including Python `re/__init__.py` and the separately copied `installed-build.json`.
 
 | Artifact | SHA-256 | Provenance |
 |---|---|---|
 | `Magisk-v30.7.apk` | `e0d32d21...9ebd5` | exact official APK bytes, independently matched to the app already installed on the phone |
 | `Vector-v2.2-3080-Release.zip` | `9ee83235...79cc` | `JingMatrix/Vector` stable `v2.2` GitHub release; GitHub asset size/digest matched |
 | `nexus-1.0.1-pearl.2-release.apk` | `99778de7...988a` | project RSA-4096 release signer; exact XiaoAi APK hash gate included |
-| `pearl-agent-magisk-0.1.0-1.zip` | `948a6c1c...e941` | accepted CI payload plus source-controlled installer hotfix: validate the exact chroot Python symlink chain and entity without resolving `/usr/bin/python3` against Android |
+| `pearl-agent-magisk-0.1.2-3.zip` | `386bcc1b...10a7d8` | accepted immutable CI payload plus reviewed persistence hardening: deep Python NUL scan, fixed critical hashes, read-only Hermes/MCP import smoke test, checked activation rollback, atomic build record and explicit F2FS synchronization before reboot |
 
 Vector's 69-entry ZIP passed CRC/path/case-collision inspection, identifies module id `zygisk_vector`, version `v2.2 (3080-88f8e1fa-JingMatrix-Vector)`, declares Android 8.1–17 support, internally verifies extracted payload hashes, and contains no partition image or flashing script. Device compatibility is still an acceptance test, not assumed from the declaration.
 
@@ -49,14 +51,15 @@ Vector's 69-entry ZIP passed CRC/path/case-collision inspection, identifies modu
 - ARM64 imports for Hermes `AIAgent`, MCP server and the installed bridge passed; bridge CLI startup to `--help` passed.
 - Static ARM64 zstd was built in two independent source paths with source/debug/macro prefix normalization; both builds produced exact SHA-256 `a24c13c...` and no ELF interpreter.
 - Rootfs archive contents, Hermes commit, ARM64 decoder identity, dynamic-link absence, uncompressed-size metadata, partition/flashing-script policies and final module contents passed the assembler gates.
-- The final Magisk module contains the maintenance-mode upgrade quiescing and race-safe uninstall/reinstall lifecycle from source commit `e0dca95`.
+- The immutable CI payload still comes from source commit `e0dca95`; module `0.1.2-3` layers the source-controlled device persistence fix on that exact rootfs and decoder. Its portable assembly is pinned to the audited rootfs/decoder/unpacked-size identities, refuses output overwrite, and ZIP CRC, script/source identity plus internal payload hashes are rechecked before deployment.
+- The runtime validation constants are intentionally payload-specific. Before any future rootfs payload upgrade, regenerate and bind the constants at build time and teach upgrade rollback to validate the old tree against its own installed build identity; never apply new-payload constants to delete an otherwise healthy old rollback tree.
 
 ## Independent module ZIP inspection
 
 After download, the module ZIP was inspected independently of its outer manifest:
 
 - 15 entries, no absolute/traversal path and no case-insensitive duplicate;
-- all six lifecycle scripts (`customize`, `post-fs-data`, `service`, `action`, `uninstall`, `lib/common`) are byte-identical to source commit `e0dca95`;
+- all six lifecycle scripts (`customize`, `post-fs-data`, `service`, `action`, `uninstall`, `lib/common`) are byte-identical to the current reviewed source tree;
 - all four files named by `payload/manifest.sha256` match their internal hashes;
 - no prohibited firmware/preloader/fastboot flashing-script name exists.
 

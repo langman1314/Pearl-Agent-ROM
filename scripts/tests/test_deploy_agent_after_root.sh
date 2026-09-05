@@ -6,13 +6,13 @@ SCRIPT="$REPO_ROOT/scripts/deploy-agent-after-root.sh"
 work="$(mktemp -d -t pearl-agent-deploy-test.XXXXXXXX)"
 trap 'rm -rf "$work"' EXIT
 release="$work/release"; mkdir -p "$release"
-for name in nexus-1.0.1-pearl.2-release.apk Vector-v2.2-3080-Release.zip pearl-agent-magisk-0.1.0-1.zip; do printf x > "$release/$name"; done
+for name in nexus-1.0.1-pearl.2-release.apk Vector-v2.2-3080-Release.zip pearl-agent-magisk-0.1.2-3.zip; do printf x > "$release/$name"; done
 cat > "$work/sha256sum" <<'EOF'
 #!/usr/bin/env bash
 case "$1" in
  *nexus-1.0.1-pearl.2-release.apk) h=99778de7820e8b3c19712a44ef921cddb778ba26156c7abd6593b7fd97b9988a;;
  *Vector-v2.2-3080-Release.zip) h=9ee8323575d615f7b3f1076ff60b2a63a49390ef11881b52632311a37f6f79cc;;
- *pearl-agent-magisk-0.1.0-1.zip) h=948a6c1ce70854a9167ca9bf1874e19e3bf08ea243f3be499215940a67cfe941;;
+ *pearl-agent-magisk-0.1.2-3.zip) h=386bcc1b4a383389343d65c8323250a2b03eba50a4c6d7e035ba5f33be10a7d8;;
  *) exit 1;; esac
 printf '%s  %s\n' "$h" "$1"
 EOF
@@ -46,6 +46,7 @@ PEARL_ACCEPT_AGENT_DEPLOY=YES_INSTALL_VECTOR_NEXUS_HERMES ADB_BIN="$work/adb" \
 grep -F 'install -r' "$MOCK_LOG" >/dev/null
 grep -F 'magisk --install-module /data/local/tmp/pearl-agent-deploy/vector.zip' "$MOCK_LOG" >/dev/null
 grep -F 'magisk --install-module /data/local/tmp/pearl-agent-deploy/agent.zip' "$MOCK_LOG" >/dev/null
+grep -F 'shell su -c sync' "$MOCK_LOG" >/dev/null
 grep -F 'reboot' "$MOCK_LOG" >/dev/null
 if grep -Eqi 'fastboot| flash |vbmeta|preloader|efuse|super' "$MOCK_LOG"; then echo 'post-root deployment escaped data-only boundary' >&2; exit 1; fi
 printf 'POST_ROOT_AGENT_DEPLOY_TEST_OK\n'

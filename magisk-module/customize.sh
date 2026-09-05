@@ -16,7 +16,6 @@ ZSTD="$MODPATH/payload/zstd"
 MANIFEST="$MODPATH/payload/manifest.sha256"
 UNPACKED_BYTES_FILE="$MODPATH/payload/rootfs.unpacked-bytes"
 HERMES_CONFIG_TEMPLATE="$MODPATH/payload/hermes-config.yaml"
-EXPECTED_HERMES_COMMIT=a2e19d484cb5591df8dafe667c93345b62d9bf06
 
 ui_print "- Pearl Nexus + Hermes chroot installer"
 ui_print "- This module never writes boot, vbmeta, super, preloader, or efuse"
@@ -123,6 +122,28 @@ grep -q "$EXPECTED_HERMES_COMMIT" "$stage/opt/pearl-agent/BUILD.json" || {
   rm -rf "$stage"
   abort "! Rootfs Hermes commit does not match the approved source"
 }
+build_json_hash="$(sha256sum "$stage/opt/pearl-agent/BUILD.json" | awk '{print $1}')"
+[ "$build_json_hash" = "$EXPECTED_BUILD_JSON_SHA256" ] || {
+  rm -rf "$stage"
+  abort "! Extracted rootfs build metadata is corrupt"
+}
+re_init_hash="$(sha256sum "$stage/usr/lib/python3.11/re/__init__.py" | awk '{print $1}')"
+[ "$re_init_hash" = "$EXPECTED_RE_INIT_SHA256" ] || {
+  rm -rf "$stage"
+  abort "! Extracted rootfs Python standard library is corrupt"
+}
+rootfs_runtime_is_valid "$stage" true || {
+  rm -rf "$stage"
+  abort "! Extracted rootfs runtime smoke test failed"
+}
+# The host deployer reboots immediately after Magisk returns. Force the multi-GB
+# extraction to stable storage before publishing it, otherwise F2FS delayed
+# writeback can leave correct file sizes backed by zero-filled data after reboot.
+ui_print "- Synchronizing verified rootfs to persistent storage"
+sync || {
+  rm -rf "$stage"
+  abort "! Could not synchronize extracted rootfs"
+}
 
 mkdir -p "$DATA_ROOT/config" "$DATA_ROOT/hermes-home/home" "$DATA_ROOT/state" \
   "$DATA_ROOT/workspace" "$DATA_ROOT/logs"
@@ -151,22 +172,61 @@ chmod 0600 "$MCP_TOKEN_FILE"
 token_length="$(wc -c < "$MCP_TOKEN_FILE" | tr -d ' ')"
 [ "$token_length" -ge 64 ] || abort "! Generated MCP token is unexpectedly short"
 
-ui_print "- Atomically activating rootfs; preserving one rollback version"
-rm -rf "$PREVIOUS_ROOTFS"
-if [ -d "$ROOTFS" ]; then
-  mv "$ROOTFS" "$PREVIOUS_ROOTFS" || {
-    rm -rf "$stage"
-    abort "! Could not preserve current rootfs"
-  }
-fi
-if ! mv "$stage" "$ROOTFS"; then
-  [ -d "$PREVIOUS_ROOTFS" ] && mv "$PREVIOUS_ROOTFS" "$ROOTFS"
-  rm -rf "$stage"
-  abort "! Could not activate new rootfs; previous rootfs restored"
-fi
+restore_after_activation_failure() {
+  reason="$1"
+  touch "$MAINTENANCE_FILE"
+  chmod 0600 "$MAINTENANCE_FILE"
+  rm -rf "$stage" "$ROOTFS"
+  rm -f "$STATE_ROOT/installed-build.json.new.$$"
+  if [ "$old_rootfs_preserved" = true ] && mv "$PREVIOUS_ROOTFS" "$ROOTFS"; then
+    rollback_record="$STATE_ROOT/installed-build.json.rollback.$$"
+    if cp "$ROOTFS/opt/pearl-agent/BUILD.json" "$rollback_record" &&
+       chmod 0600 "$rollback_record" &&
+       mv -f "$rollback_record" "$STATE_ROOT/installed-build.json"; then
+      :
+    else
+      rm -f "$rollback_record" "$STATE_ROOT/installed-build.json"
+      reason="$reason; previous build record restore failed"
+    fi
+  else
+    rm -f "$STATE_ROOT/installed-build.json"
+    [ "$old_rootfs_preserved" = false ] || reason="$reason; previous verified rootfs restore failed"
+  fi
+  sync
+  abort "! $reason"
+}
 
-cp "$ROOTFS/opt/pearl-agent/BUILD.json" "$STATE_ROOT/installed-build.json"
-chmod 0600 "$STATE_ROOT/installed-build.json"
+ui_print "- Atomically activating rootfs; preserving one verified rollback version"
+rm -rf "$PREVIOUS_ROOTFS"
+old_rootfs_preserved=false
+if [ -d "$ROOTFS" ]; then
+  if rootfs_runtime_is_valid "$ROOTFS"; then
+    mv "$ROOTFS" "$PREVIOUS_ROOTFS" || {
+      rm -rf "$stage"
+      abort "! Could not preserve current verified rootfs"
+    }
+    old_rootfs_preserved=true
+  else
+    ui_print "- Existing rootfs is corrupt; excluding it from rollback"
+    rm -rf "$ROOTFS"
+  fi
+fi
+mv "$stage" "$ROOTFS" ||
+  restore_after_activation_failure "Could not activate new rootfs"
+
+rootfs_runtime_is_valid "$ROOTFS" ||
+  restore_after_activation_failure "Activated rootfs failed final runtime verification"
+
+build_record_tmp="$STATE_ROOT/installed-build.json.new.$$"
+cp "$ROOTFS/opt/pearl-agent/BUILD.json" "$build_record_tmp" ||
+  restore_after_activation_failure "Could not stage installed build record"
+chmod 0600 "$build_record_tmp" ||
+  restore_after_activation_failure "Could not protect installed build record"
+mv -f "$build_record_tmp" "$STATE_ROOT/installed-build.json" ||
+  restore_after_activation_failure "Could not publish installed build record"
+[ "$(sha256sum "$STATE_ROOT/installed-build.json" | awk '{print $1}')" = "$EXPECTED_BUILD_JSON_SHA256" ] ||
+  restore_after_activation_failure "Installed build record failed verification"
+sync || restore_after_activation_failure "Could not synchronize activated rootfs"
 rm -f "$STATE_ROOT/mount-failed"
 
 set_perm_recursive "$MODPATH" 0 0 0755 0644
@@ -184,9 +244,16 @@ set_perm "$ZSTD" 0 0 0755
 if [ "$reinstall_after_uninstall" = true ]; then
   rm -f "$DISABLED_FILE" "$UNINSTALLED_FILE"
 fi
-# Publish completion last. If the installer is killed or aborts after entering
-# maintenance, the runtime stays fail-closed instead of starting a partial tree.
+# Persist the active rename, build record, permissions and generated token while
+# maintenance still keeps the runtime fail-closed. Publish completion last.
+sync || restore_after_activation_failure "Could not synchronize activated Agent state"
 rm -f "$MAINTENANCE_FILE"
+if ! sync; then
+  touch "$MAINTENANCE_FILE"
+  chmod 0600 "$MAINTENANCE_FILE"
+  sync
+  abort "! Could not synchronize Agent completion state; maintenance retained"
+fi
 
-ui_print "- Installation staged safely"
+ui_print "- Installation staged safely and synchronized"
 ui_print "- Reboot, then provision DEEPSEEK_API_KEY; native XiaoAi remains intact"

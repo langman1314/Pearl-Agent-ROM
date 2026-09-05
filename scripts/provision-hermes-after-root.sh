@@ -104,5 +104,6 @@ case "$verification" in
   *) echo "Secret metadata verification rejected: $verification" >&2; exit 1 ;;
 esac
 printf 'Hermes credential provisioned: %s\n' "$verification"
+"${adb[@]}" shell su -c sync
 "${adb[@]}" reboot
 echo "REBOOT_REQUESTED"

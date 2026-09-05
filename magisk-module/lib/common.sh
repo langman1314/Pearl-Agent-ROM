@@ -13,6 +13,33 @@ MAINTENANCE_FILE="$STATE_ROOT/maintenance"
 UNINSTALLED_FILE="$STATE_ROOT/uninstalled"
 MCP_TOKEN_FILE="$DATA_ROOT/config/mcp-token"
 SUPERVISOR_LOG="$LOG_DIR/supervisor.log"
+EXPECTED_HERMES_COMMIT=a2e19d484cb5591df8dafe667c93345b62d9bf06
+EXPECTED_BUILD_JSON_SHA256=e7e8fe185f9f8c52858019f1546ec3f744bbfd04d35d4cf7f5987a258ff2db15
+EXPECTED_RE_INIT_SHA256=029ead61f362489e9bb034f4c2503abee95462056541e9ad07715de3c353b0da
+
+rootfs_runtime_is_valid() {
+  tree="$1"
+  deep_scan="${2:-false}"
+  [ -x "$tree/usr/local/sbin/pearl-hermes-bridge-wrapper" ] || return 1
+  [ -L "$tree/opt/pearl-agent/venv/bin/python" ] || return 1
+  [ "$(readlink "$tree/opt/pearl-agent/venv/bin/python")" = python3 ] || return 1
+  [ -L "$tree/opt/pearl-agent/venv/bin/python3" ] || return 1
+  [ "$(readlink "$tree/opt/pearl-agent/venv/bin/python3")" = /usr/bin/python3 ] || return 1
+  [ -L "$tree/usr/bin/python3" ] || return 1
+  [ "$(readlink "$tree/usr/bin/python3")" = python3.11 ] || return 1
+  [ -x "$tree/usr/bin/python3.11" ] || return 1
+  [ "$(sha256sum "$tree/opt/pearl-agent/BUILD.json" | awk '{print $1}')" = "$EXPECTED_BUILD_JSON_SHA256" ] || return 1
+  [ "$(sha256sum "$tree/usr/lib/python3.11/re/__init__.py" | awk '{print $1}')" = "$EXPECTED_RE_INIT_SHA256" ] || return 1
+  grep -q "$EXPECTED_HERMES_COMMIT" "$tree/opt/pearl-agent/BUILD.json" || return 1
+  if [ "$deep_scan" = true ]; then
+    chroot "$tree" /usr/bin/python3.11 -B -I -S -c \
+      'import pathlib; roots=(pathlib.Path("/usr/lib/python3.11"), pathlib.Path("/opt/pearl-agent")); bad=[str(p) for root in roots for p in root.rglob("*.py") if b"\0" in p.read_bytes()]; assert not bad, bad[:5]' \
+      >/dev/null 2>&1 || return 1
+  fi
+  chroot "$tree" /bin/sh -c \
+    'cd /opt/pearl-agent/src/hermes-agent && exec /opt/pearl-agent/venv/bin/python -B -c '\''import json, pathlib, re; from run_agent import AIAgent; from mcp.server import MCPServer; import pearl_hermes_bridge; json.loads(pathlib.Path("/opt/pearl-agent/BUILD.json").read_text()); assert re.fullmatch(r"pearl-[0-9]+", "pearl-1")'\''' \
+    >/dev/null 2>&1
+}
 
 mkdir_safe() {
   mkdir -p "$1"
@@ -127,8 +154,8 @@ write_resolv_conf() {
 }
 
 mount_chroot() {
-  [ -x "$ROOTFS/usr/local/sbin/pearl-hermes-bridge-wrapper" ] || {
-    pearl_log "Rootfs missing or invalid: $ROOTFS"
+  rootfs_runtime_is_valid "$ROOTFS" || {
+    pearl_log "Rootfs runtime integrity validation failed: $ROOTFS"
     return 1
   }
 

@@ -27,7 +27,7 @@ Run both modes of `scripts/collect-device-preflight.sh` and verify each manifest
 - [x] verified-boot and lock properties recorded;
 - [x] fastboot product/unlocked/secure/anti variables recorded;
 - [x] current-slot/slot-count/has-slot and boot/vbmeta sizes reconciled;
-- [ ] recovery and fastboot remain reachable independently of Android.
+- [ ] recovery and fastboot remain reachable independently of Android (fastboot is physically proven; independent recovery remains unproven).
 
 Stop on a non-pearl identity, ambiguous slots, unexpected lock state, evidence hash failure or anti-rollback conflict.
 
@@ -53,15 +53,15 @@ After clean carrier boot, run `scripts/collect-post-install-acceptance.sh --phas
 - [x] pull, hash and unpack the result; compare stock/patched components with pinned `magiskboot`;
 - [x] validate header/geometry/kernel/bootconfig and document embedded AVB flags honestly;
 - [x] test temporary boot support (bootloader returned `unknown command`) and provide a separately gated slot-A plan plus exact stock rollback;
-- [ ] verify Android reaches boot completion, ADB, Wi-Fi, telephony and stock XiaoAi;
-- [ ] immediately execute stock rollback and prove it works before continuing.
+- [x] verify Android reaches boot completion, ADB, Wi-Fi, telephony and stock XiaoAi;
+- [x] immediately execute stock rollback and prove it works before continuing.
 
 Do not install Vector or Nexus in this stage. Run `scripts/collect-post-install-acceptance.sh --phase magisk` after the first Magisk boot and preserve its PASS evidence before performing the mandatory stock boot-A rollback proof.
 
 ## Stage 4 — data-only Hermes module
 
-- [ ] reinstall the accepted patched boot state only after Stage 3 rollback succeeds;
-- [ ] install the hash-approved Magisk module ZIP;
+- [x] reinstall the accepted patched boot state only after Stage 3 rollback succeeds;
+- [ ] install the hash-approved Magisk module ZIP (`0.1.2-3` is host-approved but not yet installed);
 - [ ] verify installer device/SDK/Magisk/free-space/hash gates;
 - [ ] confirm no partition is written by the module;
 - [ ] inspect private `/dev`, devpts, `/proc`, `/run`, absence of `/dev/block` and absence of sysfs;
@@ -75,7 +75,7 @@ After credentials and Nexus MCP provisioning, run `scripts/collect-post-install-
 
 ## Stage 5 — Vector and Nexus scope
 
-- [ ] install hash-approved Vector 2.2 and the approved Nexus release APK;
+- [x] install hash-approved Vector 2.2 and the approved Nexus release APK;
 - [ ] enable Zygisk/Vector scope only for `com.miui.voiceassist`;
 - [ ] prove no other package is in module scope;
 - [ ] on the selected 310 carrier, verify XiaoAi exact version `507012002` and full-APK SHA-256 `326fe0601b11698e70f96aca5dc05d1c783cf675ebc872024e96b405aaf64406` before enabling hooks (the official Android 15 recovery path instead uses its separately bound `507009011` identity);

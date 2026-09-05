@@ -86,6 +86,24 @@ capture() {
   fi
   return 0
 }
+capture_root_script() {
+  local name="$1" script="$2"
+  local output="$stage/$name.txt" status script_hash
+  script_hash="$(printf '%s\n' "$script" | sha256sum | awk '{print $1}')"
+  set +e
+  printf '%s\n' "$script" | "${adb[@]}" shell su -c sh > "$output" 2>&1
+  status=$?
+  set -e
+  record_command "$name" "$status" "${adb[@]}" shell su -c sh "<stdin-sha256:$script_hash>"
+  chmod 0600 "$output" 2>/dev/null || true
+  CAPTURED="$(tr -d '\r' < "$output")"
+  if [[ "$status" != 0 ]]; then
+    printf '%s\tFAIL\texit=0\texit=%s\n' "$name" "$status" >> "$checks_file"
+    failed=$((failed + 1))
+    return 1
+  fi
+  return 0
+}
 check_eq() {
   local name="$1" expected="$2" actual="$3"
   if [[ "$actual" == "$expected" ]]; then
@@ -162,7 +180,7 @@ if [[ "$PHASE" == agent ]]; then
   verify_package nexus "$NEXUS_PACKAGE" "$NEXUS_VERSION" "$NEXUS_SHA256" true
   if capture agent-module "${adb[@]}" shell su -c 'cat /data/adb/modules/pearl_agent/module.prop'; then
     check_contains agent-module-id 'id=pearl_agent' "$CAPTURED"
-    check_contains agent-module-version 'version=0.1.0' "$CAPTURED"
+    check_contains agent-module-version 'version=0.1.2' "$CAPTURED"
   fi
   if capture vector-module "${adb[@]}" shell su -c 'cat /data/adb/modules/zygisk_vector/module.prop'; then
     check_contains vector-module-id 'id=zygisk_vector' "$CAPTURED"
@@ -172,11 +190,33 @@ if [[ "$PHASE" == agent ]]; then
     check_contains hermes-commit "$HERMES_COMMIT" "$CAPTURED"
     check_contains hermes-architecture '"architecture": "arm64"' "$CAPTURED"
   fi
-  capture secret-metadata "${adb[@]}" shell su -c 'envf=/data/adb/pearl-agent/data/hermes-home/.env; token=/data/adb/pearl-agent/data/config/mcp-token; test "$(stat -c %a "$envf")" = 600 && test "$(stat -c %a "$token")" = 600 && test "$(wc -c < "$token" | tr -d "[:space:]")" = 64 && test "$(grep -c "^DEEPSEEK_API_KEY=[^[:space:]][^[:space:]]*$" "$envf" | tr -d "[:space:]")" = 1 && echo secret-metadata=valid || echo secret-metadata=invalid' && check_eq secret-metadata secret-metadata=valid "$CAPTURED"
-  capture supervisor "${adb[@]}" shell su -c 'f=/data/adb/pearl-agent/run/supervisor.pid; read pid start < "$f" && test -d "/proc/$pid" && test "$(awk "{print \$22}" "/proc/$pid/stat")" = "$start" && echo supervisor=running || echo supervisor=invalid' && check_eq supervisor supervisor=running "$CAPTURED"
-  capture bridge-process "${adb[@]}" shell su -c 'f=/data/adb/pearl-agent/run/hermes-bridge.pid; read pid start < "$f" && test -d "/proc/$pid" && test "$(awk "{print \$22}" "/proc/$pid/stat")" = "$start" && tr "\000" " " < "/proc/$pid/cmdline" | grep -q pearl-hermes-bridge && echo bridge=running || echo bridge=invalid' && check_eq bridge-process bridge=running "$CAPTURED"
-  capture loopback-listener "${adb[@]}" shell su -c 'grep -Eqi "0100007F:C88A[[:space:]]" /proc/net/tcp /proc/net/tcp6 && echo listener=127.0.0.1:51338 || echo listener=missing' && check_eq loopback-listener listener=127.0.0.1:51338 "$CAPTURED"
-  capture nexus-settings "${adb[@]}" shell su -c 'mcp=/data/user/0/com.niki914.nexus.agentic/files/settings/tools/mcp/servers.json; llm=/data/user/0/com.niki914.nexus.agentic/files/settings/agents/main/config.json; grep -Eq "\"Authorization\":\"Bearer [0-9a-f]{64}\"" "$mcp" && grep -Eq "\"provider\":\"[^\"]+\"" "$llm" && grep -Eq "\"endpoint\":\"https://[^\"]+\"" "$llm" && grep -Eq "\"model\":\"[^\"]+\"" "$llm" && grep -Eq "\"api_key\":\"[^\"]{10,}\"" "$llm" && echo nexus-settings=provisioned || echo nexus-settings=invalid' && check_eq nexus-settings nexus-settings=provisioned "$CAPTURED"
+  capture_root_script secret-metadata 'envf=/data/adb/pearl-agent/data/hermes-home/.env
+token=/data/adb/pearl-agent/data/config/mcp-token
+test "$(stat -c %a "$envf")" = 600 &&
+test "$(stat -c %a "$token")" = 600 &&
+test "$(wc -c < "$token" | tr -d "[:space:]")" = 64 &&
+test "$(grep -c "^DEEPSEEK_API_KEY=[^[:space:]][^[:space:]]*$" "$envf" | tr -d "[:space:]")" = 1 &&
+echo secret-metadata=valid || echo secret-metadata=invalid' && check_eq secret-metadata secret-metadata=valid "$CAPTURED"
+  capture_root_script supervisor 'f=/data/adb/pearl-agent/run/supervisor.pid
+read pid start < "$f" &&
+test -d "/proc/$pid" &&
+test "$(awk '\''{print $22}'\'' "/proc/$pid/stat")" = "$start" &&
+echo supervisor=running || echo supervisor=invalid' && check_eq supervisor supervisor=running "$CAPTURED"
+  capture_root_script bridge-process 'f=/data/adb/pearl-agent/run/hermes-bridge.pid
+read pid start < "$f" &&
+test -d "/proc/$pid" &&
+test "$(awk '\''{print $22}'\'' "/proc/$pid/stat")" = "$start" &&
+tr "\000" " " < "/proc/$pid/cmdline" | grep -q pearl-hermes-bridge &&
+echo bridge=running || echo bridge=invalid' && check_eq bridge-process bridge=running "$CAPTURED"
+  capture_root_script loopback-listener 'grep -Eqi "0100007F:C88A[[:space:]]" /proc/net/tcp /proc/net/tcp6 && echo listener=127.0.0.1:51338 || echo listener=missing' && check_eq loopback-listener listener=127.0.0.1:51338 "$CAPTURED"
+  capture_root_script nexus-settings 'mcp=/data/user/0/com.niki914.nexus.agentic/files/settings/tools/mcp/servers.json
+llm=/data/user/0/com.niki914.nexus.agentic/files/settings/agents/main/config.json
+grep -Eq "\"Authorization\"[[:space:]]*:[[:space:]]*\"Bearer [0-9a-f]{64}\"" "$mcp" &&
+grep -Eq "\"provider\"[[:space:]]*:[[:space:]]*\"[^\"]+\"" "$llm" &&
+grep -Eq "\"endpoint\"[[:space:]]*:[[:space:]]*\"https://[^\"]+\"" "$llm" &&
+grep -Eq "\"model\"[[:space:]]*:[[:space:]]*\"[^\"]+\"" "$llm" &&
+grep -Eq "\"api_key\"[[:space:]]*:[[:space:]]*\"[^\"]{10,}\"" "$llm" &&
+echo nexus-settings=provisioned || echo nexus-settings=invalid' && check_eq nexus-settings nexus-settings=provisioned "$CAPTURED"
 fi
 
 result=PASS

@@ -23,6 +23,7 @@ case "$joined" in
   *"test -f /data/adb/modules/pearl_agent/module.prop"*) exit 0 ;;
   *"cat > \"\$tmp\""*) cat > "$ADB_TEST_CAPTURE" ;;
   *"mode=\$(stat -c %a"*) echo 'mode=600 key_lines=1 bytes=52' ;;
+  "shell su -c sync") echo sync >> "$ADB_TEST_LOG" ;;
   "reboot") echo reboot >> "$ADB_TEST_LOG" ;;
   *) echo "Unexpected adb invocation: $joined" >&2; exit 99 ;;
 esac
@@ -58,6 +59,7 @@ if grep -Fq "$secret" "$log"; then
 fi
 printf 'DEEPSEEK_API_KEY=%s\n' "$secret" > "$tmp/expected"
 cmp -s "$tmp/expected" "$capture"
+grep -qx 'sync' "$log"
 grep -qx 'reboot' "$log"
 
 echo 'HERMES_SECRET_PROVISION_TEST_OK'

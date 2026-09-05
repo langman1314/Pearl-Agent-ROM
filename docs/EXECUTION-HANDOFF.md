@@ -2,12 +2,14 @@
 
 ## Prepared state
 
-Host preparation is complete at Git HEAD `8536225` or later. No partition has been written during this project session. The phone was last safely returned to Android after unsupported `fastboot fetch` and `fastboot boot` probes, and is currently disconnected from both ADB and fastboot.
+The physical carrier and Magisk gates have now executed. The 310 carrier acceptance passed, fresh Magisk 30.7 passed, stock boot rollback was physically proven, and fresh Magisk was installed again. Nexus pearl.2 and Vector 2.2 are installed. Agent module `0.1.0-1` exposed an F2FS persistence failure: the immutable rootfs archive remained hash-correct, but immediate reboot after a multi-gigabyte extraction left some files with correct sizes and zero-filled data. Do not repeat carrier or boot flashing for this repair.
 
-Required host-only directories:
+Current host-only directories:
 
-- carrier: `D:\PearlAgentBuild\carrier-310-staging`
-- Agent artifacts: `D:\PearlAgentBuild\controlled-release`
+- carrier provenance only: `D:\PearlAgentBuild\carrier-310-staging`
+- current Agent artifacts: `D:\PearlAgentBuild\controlled-release-v4`
+- retired Agent sets: `D:\PearlAgentBuild\controlled-release` and `controlled-release-v2`
+- device evidence: `D:\PearlAgentBuild\device-evidence`
 - official recovery anchor: preserved `OS3.0.3.0.VLHCNXM` fastboot archive/extraction
 
 Do not run `flashl.bat` from the 310 ZIP. Do not add preloader, efuse, GPT, slot B or low-level firmware commands.
@@ -54,9 +56,9 @@ Confirm boot, ADB, Magisk 30.7 and `su`. Then reboot to fastboot and prove `--mo
 
 ## Gate 5 — data-only Agent deployment
 
-Run `scripts/deploy-agent-after-root.sh` against `D:\PearlAgentBuild\controlled-release` without `--execute`. It requires pearl SDK 36 and exact hashes for Nexus pearl.2, stable Vector v2.2 and the Agent module. After review, its execution path requires the exact `PEARL_ACCEPT_AGENT_DEPLOY` acknowledgement.
+Run `scripts/deploy-agent-after-root.sh` against `D:\PearlAgentBuild\controlled-release-v4` without `--execute`. It requires pearl SDK 36 and exact hashes for Nexus pearl.2, stable Vector v2.2 and Agent module `0.1.2-3` SHA-256 `386bcc1b...10a7d8`. After review, its execution path requires the exact `PEARL_ACCEPT_AGENT_DEPLOY` acknowledgement.
 
-The script installs only an APK and two Magisk modules, cleans temporary files and reboots. It never flashes a partition and intentionally does not enable Xposed scope. After reboot:
+The script installs only an APK and two Magisk modules, requires the Agent installer to deep-scan Python sources, import Hermes/MCP, exclude the known corrupt rootfs from rollback, atomically publish build metadata and force F2FS synchronization. The host performs another root `sync` before cleaning temporary files and rebooting. It never flashes a partition and intentionally does not enable Xposed scope. After reboot:
 
 1. confirm Magisk and `zygisk_vector` are healthy;
 2. open the Vector manager and enable Nexus only for the exact XiaoAi package/process scope required by the compatibility config;
