@@ -60,17 +60,39 @@ trap 'rm -rf "$stage"' EXIT
 cp "$PROBE" "$stage/probe-hermes-mcp.py"
 chmod 0600 "$stage/probe-hermes-mcp.py" 2>/dev/null || true
 
-remote='output=$(chroot /data/adb/pearl-agent/rootfs /opt/pearl-agent/venv/bin/python - --url http://127.0.0.1:51338/mcp --token-file /data/pearl-agent/config/mcp-token 2>&1); status=$?; token=$(cat /data/adb/pearl-agent/data/config/mcp-token) || exit 1; case "$output" in *"$token"*) echo "probe output contained MCP token" >&2; exit 97;; esac; printf "%s\n" "$output"; exit "$status"'
+device_probe="$stage/device-probe.sh"
+{
+  cat <<'DEVICE_SH'
+output="$(
+  chroot /data/adb/pearl-agent/rootfs /opt/pearl-agent/venv/bin/python - \
+    --url http://127.0.0.1:51338/mcp \
+    --token-file /data/pearl-agent/config/mcp-token 2>&1 <<'PEARL_MCP_PROBE_PY'
+DEVICE_SH
+  cat "$PROBE"
+  cat <<'DEVICE_SH'
+PEARL_MCP_PROBE_PY
+)"
+status=$?
+token="$(cat /data/adb/pearl-agent/data/config/mcp-token)" || exit 1
+case "$output" in
+  *"$token"*) echo "probe output contained MCP token" >&2; exit 97 ;;
+esac
+printf '%s\n' "$output"
+exit "$status"
+DEVICE_SH
+} > "$device_probe"
+chmod 0600 "$device_probe" 2>/dev/null || true
+device_probe_hash="$(sha256sum "$device_probe" | awk '{print $1}')"
 {
   printf 'name\texit_code\tcommand\n'
   printf 'mcp-probe\t0\t'
-  printf '%q ' "${adb[@]}" shell su -c "$remote"
-  printf '< probe-hermes-mcp.py\n'
+  printf '%q ' "${adb[@]}" shell su -c sh
+  printf '<stdin-sha256:%s>\n' "$device_probe_hash"
 } > "$stage/commands.tsv"
 chmod 0600 "$stage/commands.tsv" 2>/dev/null || true
 
 set +e
-"${adb[@]}" shell su -c "$remote" < "$PROBE" > "$stage/probe.txt" 2> "$stage/probe-error.txt"
+"${adb[@]}" shell su -c sh < "$device_probe" > "$stage/probe.txt" 2> "$stage/probe-error.txt"
 status=$?
 set -e
 tr -d '\r' < "$stage/probe.txt" > "$stage/probe.normalized.txt"
