@@ -146,18 +146,51 @@ sync || {
 }
 
 mkdir -p "$DATA_ROOT/config" "$DATA_ROOT/hermes-home/home" "$DATA_ROOT/state" \
-  "$DATA_ROOT/workspace" "$DATA_ROOT/logs"
+  "$DATA_ROOT/workspace" "$DATA_ROOT/logs" "$stage/tmp"
 chmod 0700 "$DATA_ROOT" "$DATA_ROOT/config" "$DATA_ROOT/hermes-home" \
   "$DATA_ROOT/hermes-home/home" "$DATA_ROOT/state" "$DATA_ROOT/workspace" "$DATA_ROOT/logs"
 
-if [ ! -f "$DATA_ROOT/config/hermes-bridge.json" ]; then
-  cp "$stage/data/pearl-agent/config/hermes-bridge.json" "$DATA_ROOT/config/hermes-bridge.json"
-  chmod 0600 "$DATA_ROOT/config/hermes-bridge.json"
-fi
-if [ ! -f "$DATA_ROOT/hermes-home/config.yaml" ]; then
-  cp "$HERMES_CONFIG_TEMPLATE" "$DATA_ROOT/hermes-home/config.yaml"
-fi
-chmod 0600 "$DATA_ROOT/hermes-home/config.yaml"
+config_is_valid() {
+  kind="$1"
+  candidate="$2"
+  [ -s "$candidate" ] || return 1
+  probe="$stage/tmp/pearl-config-${kind}.$$"
+  cp "$candidate" "$probe" || return 1
+  if [ "$kind" = bridge ]; then
+    chroot "$stage" /opt/pearl-agent/venv/bin/python -B -c \
+      'import sys; from pearl_hermes_bridge.config import BridgeConfig; BridgeConfig.from_file(sys.argv[1])' \
+      "/tmp/pearl-config-${kind}.$$" >/dev/null 2>&1
+  else
+    chroot "$stage" /opt/pearl-agent/venv/bin/python -B -c \
+      'import sys, yaml; raw=yaml.safe_load(open(sys.argv[1], encoding="utf-8")); model=raw["model"]; assert isinstance(raw, dict) and isinstance(model, dict); assert all(isinstance(model[k], str) and model[k].strip() for k in ("provider", "default", "base_url"))' \
+      "/tmp/pearl-config-${kind}.$$" >/dev/null 2>&1
+  fi
+  status=$?
+  rm -f "$probe"
+  return "$status"
+}
+
+install_config_if_invalid() {
+  kind="$1"
+  source="$2"
+  target="$3"
+  if config_is_valid "$kind" "$target"; then
+    return 0
+  fi
+  ui_print "- Repairing invalid $kind configuration from verified defaults"
+  tmp="$target.new.$$"
+  cp "$source" "$tmp" && chmod 0600 "$tmp" && config_is_valid "$kind" "$tmp" && mv -f "$tmp" "$target" || {
+    rm -f "$tmp"
+    abort "! Could not atomically repair invalid $kind configuration"
+  }
+}
+
+install_config_if_invalid bridge \
+  "$stage/data/pearl-agent/config/hermes-bridge.json" \
+  "$DATA_ROOT/config/hermes-bridge.json"
+install_config_if_invalid hermes \
+  "$HERMES_CONFIG_TEMPLATE" \
+  "$DATA_ROOT/hermes-home/config.yaml"
 if [ ! -f "$DATA_ROOT/hermes-home/.env" ]; then
   : > "$DATA_ROOT/hermes-home/.env"
 fi

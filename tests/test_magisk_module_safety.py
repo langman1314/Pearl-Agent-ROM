@@ -113,6 +113,18 @@ class UpgradeMaintenanceSafetyTest(unittest.TestCase):
         self.assertIn('import pearl_hermes_bridge', common)
         self.assertIn('if b"\\0" in p.read_bytes()', common)
 
+    def test_installer_repairs_only_invalid_persistent_configs(self) -> None:
+        script = text("customize.sh")
+        self.assertIn("config_is_valid()", script)
+        self.assertIn("install_config_if_invalid()", script)
+        self.assertIn("BridgeConfig.from_file(sys.argv[1])", script)
+        self.assertIn("yaml.safe_load", script)
+        self.assertIn('if config_is_valid "$kind" "$target"; then', script)
+        self.assertIn('tmp="$target.new.$$"', script)
+        self.assertIn('mv -f "$tmp" "$target"', script)
+        self.assertNotIn('if [ ! -f "$DATA_ROOT/config/hermes-bridge.json" ]', script)
+        self.assertNotIn('if [ ! -f "$DATA_ROOT/hermes-home/config.yaml" ]', script)
+
     def test_installer_detects_zero_filled_runtime_and_syncs_persistence(self) -> None:
         script = text("customize.sh")
         common = text("lib/common.sh")

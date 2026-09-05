@@ -61,9 +61,9 @@ Do not install Vector or Nexus in this stage. Run `scripts/collect-post-install-
 ## Stage 4 — data-only Hermes module
 
 - [x] reinstall the accepted patched boot state only after Stage 3 rollback succeeds;
-- [ ] install the hash-approved Magisk module ZIP (`0.1.3-4` is host-approved but not yet installed);
-- [ ] verify installer device/SDK/Magisk/free-space/hash gates;
-- [ ] confirm no partition is written by the module;
+- [x] install the hash-approved Magisk module ZIP (`0.1.3-4` passed rootfs/F2FS persistence but exposed corrupt retained configs; `0.1.4-5` is the current repair);
+- [x] verify installer device/SDK/Magisk/free-space/hash gates;
+- [x] confirm no partition is written by the module;
 - [ ] inspect private `/dev`, devpts, `/proc`, `/run`, absence of `/dev/block` and absence of sysfs;
 - [ ] run `scripts/provision-hermes-after-root.sh` and verify hidden-input/ADB-stdin/mode-0600 Hermes credential provisioning without terminal, argument or host-file exposure;
 - [ ] launch Nexus, grant its one-time root request, and verify it reads the generated MCP token into the local Bearer header; provision the Nexus main-Agent DeepSeek credential separately through Android UI;
