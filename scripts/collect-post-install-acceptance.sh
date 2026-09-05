@@ -180,7 +180,7 @@ if [[ "$PHASE" == agent ]]; then
   verify_package nexus "$NEXUS_PACKAGE" "$NEXUS_VERSION" "$NEXUS_SHA256" true
   if capture agent-module "${adb[@]}" shell su -c 'cat /data/adb/modules/pearl_agent/module.prop'; then
     check_contains agent-module-id 'id=pearl_agent' "$CAPTURED"
-    check_contains agent-module-version 'version=0.1.2' "$CAPTURED"
+    check_contains agent-module-version 'version=0.1.3' "$CAPTURED"
   fi
   if capture vector-module "${adb[@]}" shell su -c 'cat /data/adb/modules/zygisk_vector/module.prop'; then
     check_contains vector-module-id 'id=zygisk_vector' "$CAPTURED"

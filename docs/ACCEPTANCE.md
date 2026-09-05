@@ -61,7 +61,7 @@ Do not install Vector or Nexus in this stage. Run `scripts/collect-post-install-
 ## Stage 4 — data-only Hermes module
 
 - [x] reinstall the accepted patched boot state only after Stage 3 rollback succeeds;
-- [ ] install the hash-approved Magisk module ZIP (`0.1.2-3` is host-approved but not yet installed);
+- [ ] install the hash-approved Magisk module ZIP (`0.1.3-4` is host-approved but not yet installed);
 - [ ] verify installer device/SDK/Magisk/free-space/hash gates;
 - [ ] confirm no partition is written by the module;
 - [ ] inspect private `/dev`, devpts, `/proc`, `/run`, absence of `/dev/block` and absence of sysfs;

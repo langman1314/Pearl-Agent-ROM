@@ -62,7 +62,7 @@ def add_entry(archive: zipfile.ZipFile, path: Path, relative: str) -> None:
         "payload/rootfs.tar.zst",
         "payload/zstd",
     } else zipfile.ZIP_DEFLATED
-    with path.open("rb") as source, archive.open(info, "w", force_zip64=True) as target:
+    with path.open("rb") as source, archive.open(info, "w") as target:
         shutil.copyfileobj(source, target, 8 * 1024 * 1024)
     # zipfile.open() uses the ZipInfo compression setting.
     if compression != info.compress_type:
@@ -148,7 +148,7 @@ def main() -> None:
                         if relative in {"payload/rootfs.tar.zst", "payload/zstd"}
                         else zipfile.ZIP_DEFLATED
                     )
-                    with path.open("rb") as source, archive.open(info, "w", force_zip64=True) as target:
+                    with path.open("rb") as source, archive.open(info, "w") as target:
                         shutil.copyfileobj(source, target, 8 * 1024 * 1024)
 
     artifact_hash = sha256(artifact)

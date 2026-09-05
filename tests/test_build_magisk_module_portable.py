@@ -29,6 +29,7 @@ class PortableMagiskBuildTest(unittest.TestCase):
         source = SCRIPT.read_text(encoding="utf-8")
         self.assertIn("refusing to overwrite immutable release output", source)
         self.assertNotIn("artifact.unlink", source)
+        self.assertNotIn("force_zip64=True", source)
 
     def test_zip_modes_and_timestamps_are_deterministic(self) -> None:
         with tempfile.TemporaryDirectory() as temp_name:
@@ -53,6 +54,8 @@ class PortableMagiskBuildTest(unittest.TestCase):
                     self.assertEqual(archive.getinfo("customize.sh").external_attr >> 16, 0o100755)
                     self.assertEqual(archive.getinfo("module.prop").external_attr >> 16, 0o100644)
                     self.assertEqual(archive.getinfo("customize.sh").date_time, MODULE.SOURCE_DATE_TIME)
+                    self.assertLessEqual(archive.getinfo("customize.sh").extract_version, 20)
+                    self.assertLessEqual(archive.getinfo("module.prop").extract_version, 20)
             self.assertEqual(outputs[0], outputs[1])
 
 
