@@ -5,19 +5,19 @@
 | 字段 | 值 |
 |---|---|
 | package | `com.niki914.nexus.agentic` |
-| versionCode | `8` |
-| versionName | `1.0.1-pearl.2` |
+| versionCode | `9` |
+| versionName | `1.0.1-pearl.3` |
 | minSdk | `26` |
 | targetSdk | `34` |
 | compileSdk | `37` |
-| Nexus Git tree | `09a74cda47aabce3cee8670c1ba2b84ea65d9661` |
-| APK 文件 | `nexus-1.0.1-pearl.2-release.apk` |
-| APK 字节数 | `4,878,081` |
-| APK SHA-256 | `99778de7820e8b3c19712a44ef921cddb778ba26156c7abd6593b7fd97b9988a` |
+| Nexus Git tree | `a51f479d7bdf4eaca1ef8fe00954176dea23572a` |
+| APK 文件 | `nexus-1.0.1-pearl.3-release.apk` |
+| APK 字节数 | `4,878,137` |
+| APK SHA-256 | `2e8daa59fb28c986db70fd54b90962a641da41b882d7bd8d938b65d3dac9ff2f` |
 
 APK 位于 gitignored `artifacts/nexus/`，不进入源码仓库。`aapt dump badging`、`zipalign -c -P 16 4` 与 `apksigner verify --verbose --print-certs` 均通过，完整输出随本地 audit artifact 保存。
 
-该版本修复物理设备发现的 same-version/different-bytes 风险：XiaoAi Hook 不再只按 versionCode 选择，必须同时匹配 full-APK SHA-256。官方 `507009011` 和原输入 `507012002` 各自绑定独立 hash；缺少 hash 的 `507013003` 保持 fail-closed。签名 APK 内 674 个 ZIP entries 全部 CRC 通过，两个绑定配置与源码逐字节一致。
+pearl.3 保留 pearl.2 的 full-APK SHA-256 gate，并修复 Android 16 上 XiaoAi 无法冷启动跨包前台服务的问题：Nexus `Application` 请求启动既有 `AgentRuntimeService`，Agent Magisk supervisor 在开机后也 best-effort 请求该服务；hook 在 Binder 5 秒内未连接时明确退出、不安装半初始化 hooks，原生 XiaoAi 保持 fail-open。签名 APK 内 ZIP entries 全部 CRC 通过，两个绑定配置与 clean Git tree 的构建输入逐字节一致。
 
 ## Signer identity
 
@@ -66,6 +66,6 @@ APK 位于 gitignored `artifacts/nexus/`，不进入源码仓库。`aapt dump ba
 
 **签名 APK 目前不声明 byte-for-byte reproducible。**
 
-在加入 507012002 config 之前做过一次强制 `--rerun-tasks assembleRelease`：两次产物有相同大小、相同 672 个 ZIP entry 名称、CRC、uncompressed/compressed size 与 timestamp，但 APK 总 SHA-256 从 `58f35e…0185` 变为 `1e09fd…cb2e`。差异因此局限于 ZIP entries 以外的 APK signing block；两份 payload 等价，但严格 signed-byte reproducibility gate 未通过。当前含 full-APK identity gate 的 `99778d…988a` pearl.2 release 继续按单一批准 hash 管理，不借源码变化重置这一未通过结论。
+在加入 507012002 config 之前做过一次强制 `--rerun-tasks assembleRelease`：两次产物有相同大小、相同 672 个 ZIP entry 名称、CRC、uncompressed/compressed size 与 timestamp，但 APK 总 SHA-256 从 `58f35e…0185` 变为 `1e09fd…cb2e`。差异因此局限于 ZIP entries 以外的 APK signing block；两份 payload 等价，但严格 signed-byte reproducibility gate 未通过。当前含 runtime-startup 修复的 `2e8daa…c9ff2f` pearl.3 release 继续按单一批准 hash 管理，不借源码变化重置这一未通过结论。
 
 安全策略是不修改 signer 实现、不注入伪随机源、不降低验证算法来追求相同字节。发布时以“固定源码 tree + 固定工具链 + 固定 signer certificate + 单个批准 APK hash”的 provenance 模式管理；若未来要声明严格可复现，必须先解释并消除 signing-block 差异，再独立构建两次得到相同总 SHA-256。

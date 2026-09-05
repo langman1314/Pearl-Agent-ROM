@@ -14,7 +14,7 @@ Required before connecting the phone:
 - [x] Nexus release built from source, all unit tests passed, release signer fixed;
 - [x] Hermes rootfs, static ARM64 zstd and Magisk module CI artifact fully green and downloaded manifest independently rechecked (`run 33319865389`);
 - [ ] external backup of Nexus release key confirmed;
-- [x] approved Magisk 30.7, Vector 2.2, Nexus pearl.2 and Agent module artifacts copied to the controlled release directory with one tracked hash manifest.
+- [x] approved Magisk 30.7, Vector 2.2, Nexus pearl.3 and Agent module artifacts copied to the controlled release directory with one tracked hash manifest.
 
 Exit criterion: one release manifest identifies every non-stock artifact. Status remains NO FLASH.
 
@@ -61,7 +61,7 @@ Do not install Vector or Nexus in this stage. Run `scripts/collect-post-install-
 ## Stage 4 — data-only Hermes module
 
 - [x] reinstall the accepted patched boot state only after Stage 3 rollback succeeds;
-- [x] install the hash-approved Magisk module ZIP (`0.1.3-4` proved rootfs/F2FS persistence, `0.1.4-5` repaired retained configs, and `0.1.5-6` repairs the inherited invalid MCP token);
+- [x] install the hash-approved Magisk module ZIP (`0.1.3-4` proved rootfs/F2FS persistence, `0.1.4-5` repaired retained configs, `0.1.5-6` repaired the inherited MCP token, and `0.1.6-7` starts the Nexus runtime before XiaoAi binds);
 - [x] verify installer device/SDK/Magisk/free-space/hash gates;
 - [x] confirm no partition is written by the module;
 - [ ] inspect private `/dev`, devpts, `/proc`, `/run`, absence of `/dev/block` and absence of sysfs;

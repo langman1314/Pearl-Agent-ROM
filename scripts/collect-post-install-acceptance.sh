@@ -15,8 +15,8 @@ XIAOAI_PACKAGE=com.miui.voiceassist
 XIAOAI_VERSION=507012002
 XIAOAI_SHA256=326fe0601b11698e70f96aca5dc05d1c783cf675ebc872024e96b405aaf64406
 NEXUS_PACKAGE=com.niki914.nexus.agentic
-NEXUS_VERSION=8
-NEXUS_SHA256=99778de7820e8b3c19712a44ef921cddb778ba26156c7abd6593b7fd97b9988a
+NEXUS_VERSION=9
+NEXUS_SHA256=2e8daa59fb28c986db70fd54b90962a641da41b882d7bd8d938b65d3dac9ff2f
 HERMES_COMMIT=a2e19d484cb5591df8dafe667c93345b62d9bf06
 
 usage() {
@@ -180,7 +180,7 @@ if [[ "$PHASE" == agent ]]; then
   verify_package nexus "$NEXUS_PACKAGE" "$NEXUS_VERSION" "$NEXUS_SHA256" true
   if capture agent-module "${adb[@]}" shell su -c 'cat /data/adb/modules/pearl_agent/module.prop'; then
     check_contains agent-module-id 'id=pearl_agent' "$CAPTURED"
-    check_contains agent-module-version 'version=0.1.5' "$CAPTURED"
+    check_contains agent-module-version 'version=0.1.6' "$CAPTURED"
   fi
   if capture vector-module "${adb[@]}" shell su -c 'cat /data/adb/modules/zygisk_vector/module.prop'; then
     check_contains vector-module-id 'id=zygisk_vector' "$CAPTURED"

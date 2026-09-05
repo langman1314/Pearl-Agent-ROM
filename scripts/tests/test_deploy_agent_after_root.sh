@@ -6,13 +6,13 @@ SCRIPT="$REPO_ROOT/scripts/deploy-agent-after-root.sh"
 work="$(mktemp -d -t pearl-agent-deploy-test.XXXXXXXX)"
 trap 'rm -rf "$work"' EXIT
 release="$work/release"; mkdir -p "$release"
-for name in nexus-1.0.1-pearl.2-release.apk Vector-v2.2-3080-Release.zip pearl-agent-magisk-0.1.5-6.zip; do printf x > "$release/$name"; done
+for name in nexus-1.0.1-pearl.3-release.apk Vector-v2.2-3080-Release.zip pearl-agent-magisk-0.1.6-7.zip; do printf x > "$release/$name"; done
 cat > "$work/sha256sum" <<'EOF'
 #!/usr/bin/env bash
 case "$1" in
- *nexus-1.0.1-pearl.2-release.apk) h=99778de7820e8b3c19712a44ef921cddb778ba26156c7abd6593b7fd97b9988a;;
+ *nexus-1.0.1-pearl.3-release.apk) h=2e8daa59fb28c986db70fd54b90962a641da41b882d7bd8d938b65d3dac9ff2f;;
  *Vector-v2.2-3080-Release.zip) h=9ee8323575d615f7b3f1076ff60b2a63a49390ef11881b52632311a37f6f79cc;;
- *pearl-agent-magisk-0.1.5-6.zip) h=6c1b03633c0e69d35558e94cf2e9590129ab3f91120f99c423c286cf42304a0c;;
+ *pearl-agent-magisk-0.1.6-7.zip) h=bbebae1483cf3a228ad3715e12284739334bafbcc6d9573d83ef3b9b19c51cf2;;
  *) exit 1;; esac
 printf '%s  %s\n' "$h" "$1"
 EOF
