@@ -34,6 +34,22 @@ class ConfigTest(unittest.TestCase):
                 BridgeConfig.from_file(path)
 
 
+class ServerTransportTest(unittest.TestCase):
+    def test_android_transport_is_loopback_stateless_http(self):
+        config = BridgeConfig(host="127.0.0.1", port=51338, path="/mcp")
+
+        self.assertEqual(
+            {
+                "transport": "streamable-http",
+                "host": "127.0.0.1",
+                "port": 51338,
+                "streamable_http_path": "/mcp",
+                "stateless_http": True,
+            },
+            config.transport_options(),
+        )
+
+
 class SharedSecretVerifierTest(unittest.IsolatedAsyncioTestCase):
     async def test_rejects_wrong_token_without_importing_mcp_runtime(self):
         verifier = SharedSecretVerifier("a" * 64)

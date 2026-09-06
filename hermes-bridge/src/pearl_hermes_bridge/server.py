@@ -110,6 +110,13 @@ def create_server(config: BridgeConfig) -> tuple[MCPServer, TaskStore, TaskWorke
     return server, store, worker
 
 
+def run_server(server: MCPServer, config: BridgeConfig) -> None:
+    # Nexus' Android MCP client sends independent authenticated requests and
+    # does not retain the Mcp-Session-Id response header. Stateless mode is
+    # therefore required for interoperable initialize/listTools/callTool.
+    server.run(**config.transport_options())
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Pearl Nexus to Hermes MCP bridge")
     parser.add_argument(
@@ -120,12 +127,7 @@ def main() -> None:
     args = parser.parse_args()
     config = BridgeConfig.from_file(Path(args.config))
     server, _, _ = create_server(config)
-    server.run(
-        transport="streamable-http",
-        host=config.host,
-        port=config.port,
-        streamable_http_path=config.path,
-    )
+    run_server(server, config)
 
 
 if __name__ == "__main__":

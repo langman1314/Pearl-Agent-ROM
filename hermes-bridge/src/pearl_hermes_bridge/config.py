@@ -44,6 +44,16 @@ class BridgeConfig:
             raise ValueError(f"Unknown bridge config keys: {', '.join(unknown)}")
         return cls(**raw).validated()
 
+    def transport_options(self) -> dict[str, object]:
+        validated = self.validated()
+        return {
+            "transport": "streamable-http",
+            "host": validated.host,
+            "port": validated.port,
+            "streamable_http_path": validated.path,
+            "stateless_http": True,
+        }
+
     def validated(self) -> "BridgeConfig":
         try:
             address = ipaddress.ip_address(self.host)

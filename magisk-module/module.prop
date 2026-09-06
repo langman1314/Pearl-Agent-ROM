@@ -1,7 +1,7 @@
 id=pearl_agent
 name=Pearl Nexus + Hermes Chroot
-version=0.1.6
-versionCode=7
+version=0.1.7
+versionCode=8
 author=langman1314
 summary=Local Nexus-to-Hermes agent runtime for Redmi Note 12T Pro
 description=Starts the verified Debian ARM64 Hermes runtime from /data without modifying Android partitions.
