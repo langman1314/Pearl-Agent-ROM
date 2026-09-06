@@ -47,9 +47,9 @@ case "$joined" in
   'shell sha256sum /product/app/MIUIVoiceAssist/MIUIVoiceAssist.apk') echo "$xiaoai_hash  /product/app/MIUIVoiceAssist/MIUIVoiceAssist.apk" ;;
   'shell su -c id') echo 'uid=0(root) gid=0(root) groups=0(root)' ;;
   'shell su -c magisk -V') echo 30700 ;;
-  'shell cmd package list packages --show-versioncode com.niki914.nexus.agentic') echo 'package:com.niki914.nexus.agentic versionCode:9' ;;
+  'shell cmd package list packages --show-versioncode com.niki914.nexus.agentic') echo 'package:com.niki914.nexus.agentic versionCode:13' ;;
   'shell pm path com.niki914.nexus.agentic') echo 'package:/data/app/~~abc==/com.niki914.nexus.agentic-def==/base.apk' ;;
-  *"sha256sum '/data/app/~~abc==/com.niki914.nexus.agentic-def==/base.apk'"*) echo '2e8daa59fb28c986db70fd54b90962a641da41b882d7bd8d938b65d3dac9ff2f  /data/app/base.apk' ;;
+  *"sha256sum '/data/app/~~abc==/com.niki914.nexus.agentic-def==/base.apk'"*) echo '1b75c2c8438dd6139af0791e74e832db63a5137f27b25489c69a1465d9ef9f50  /data/app/base.apk' ;;
   *'cat /data/adb/modules/pearl_agent/module.prop'*) printf 'id=pearl_agent\nversion=0.1.6\nversionCode=7\n' ;;
   *'cat /data/adb/modules/zygisk_vector/module.prop'*) printf 'id=zygisk_vector\nversion=v2.2\nversionCode=3080\n' ;;
   *'cat /data/adb/pearl-agent/rootfs/opt/pearl-agent/BUILD.json'*) printf '{"architecture": "arm64", "hermes_commit": "a2e19d484cb5591df8dafe667c93345b62d9bf06"}\n' ;;

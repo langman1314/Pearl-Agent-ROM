@@ -38,11 +38,11 @@ RELEASE_DIR="$(cd -- "$RELEASE_DIR" && pwd -P)"
 adb=("$ADB_BIN")
 [[ -z "$SERIAL" ]] || adb+=( -s "$SERIAL" )
 
-nexus="$RELEASE_DIR/nexus-1.0.1-pearl.3-release.apk"
+nexus="$RELEASE_DIR/nexus-1.0.1-pearl.7-release.apk"
 vector="$RELEASE_DIR/Vector-v2.2-3080-Release.zip"
 agent="$RELEASE_DIR/pearl-agent-magisk-0.1.6-7.zip"
 declare -A expected=(
-  ["$nexus"]=2e8daa59fb28c986db70fd54b90962a641da41b882d7bd8d938b65d3dac9ff2f
+  ["$nexus"]=1b75c2c8438dd6139af0791e74e832db63a5137f27b25489c69a1465d9ef9f50
   ["$vector"]=9ee8323575d615f7b3f1076ff60b2a63a49390ef11881b52632311a37f6f79cc
   ["$agent"]=bbebae1483cf3a228ad3715e12284739334bafbcc6d9573d83ef3b9b19c51cf2
 )
@@ -73,7 +73,7 @@ vector_adb="$(adb_host_path "$vector")"
 agent_adb="$(adb_host_path "$agent")"
 
 printf 'Post-root deployment plan:\n'
-printf '  adb install -r nexus-1.0.1-pearl.3-release.apk\n'
+printf '  adb install -r nexus-1.0.1-pearl.7-release.apk\n'
 printf '  magisk --install-module Vector-v2.2-3080-Release.zip\n'
 printf '  magisk --install-module pearl-agent-magisk-0.1.6-7.zip\n'
 printf '  root sync\n'
