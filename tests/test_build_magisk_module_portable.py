@@ -19,13 +19,13 @@ class PortableMagiskBuildTest(unittest.TestCase):
     def test_approved_payload_hashes_are_pinned(self) -> None:
         self.assertEqual(
             MODULE.APPROVED_ROOTFS_SHA256,
-            "53f59ea09bb065643a0bc8de49b727fbf1b386a3b2cef2c564e329037b70cb87",
+            "5945f5a88f01cfb42e4d742c62be4eb9a460bffad8a417b7c0f9cab446ae0694",
         )
         self.assertEqual(
             MODULE.APPROVED_ZSTD_SHA256,
             "a24c13c263518fc5b565407ecf0661b4cb03f724f77f0fe185be854b9a96bc09",
         )
-        self.assertEqual(MODULE.APPROVED_UNPACKED_BYTES, 1_034_997_760)
+        self.assertEqual(MODULE.APPROVED_UNPACKED_BYTES, 987_392_356)
         source = SCRIPT.read_text(encoding="utf-8")
         self.assertIn("refusing to overwrite immutable release output", source)
         self.assertNotIn("artifact.unlink", source)
