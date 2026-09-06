@@ -2,7 +2,6 @@ package com.niki914.nexus.agentic.mod.feat.hyper
 
 import com.niki914.nexus.agentic.chat.ActiveTurnStore
 import com.niki914.nexus.agentic.mod.feat.AbstractAssistantHook
-import com.niki914.nexus.agentic.mod.feat.hyper.subhooks.BlockNativeInstructionByWhitelistHook
 import com.niki914.nexus.agentic.mod.feat.hyper.subhooks.BlockNativeTtsPlaybackHook
 import com.niki914.nexus.agentic.mod.feat.hyper.subhooks.CaptureInputHook
 import com.niki914.nexus.agentic.mod.feat.hyper.subhooks.CaptureInstructionInputHook
@@ -57,8 +56,6 @@ class XiaoaiChatHook(
                 targetReady.complete(Unit)
             }
         ).onHook(lpparam)
-
-        BlockNativeInstructionByWhitelistHook(scope).onHook(lpparam)
 
         BlockNativeTtsPlaybackHook(scope).onHook(lpparam)
 
