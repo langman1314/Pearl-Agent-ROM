@@ -197,7 +197,7 @@ test "$(stat -c %a "$token")" = 600 &&
 test "$(wc -c < "$token" | tr -d "[:space:]")" = 64 &&
 grep -Eq "^[0-9a-f]{64}$" "$token" &&
 test "$(awk '\''{ for (i = 1; i <= length($0); i++) seen[substr($0, i, 1)] = 1 } END { print length(seen) }'\'' "$token")" -ge 8 &&
-test "$(grep -c "^DEEPSEEK_API_KEY=[^[:space:]][^[:space:]]*$" "$envf" | tr -d "[:space:]")" = 1 &&
+test "$(grep -Ec "^(DEEPSEEK_API_KEY|OPENAI_API_KEY)=[^[:space:]][^[:space:]]*$" "$envf" | tr -d "[:space:]")" = 1 &&
 echo secret-metadata=valid || echo secret-metadata=invalid' && check_eq secret-metadata secret-metadata=valid "$CAPTURED"
   capture_root_script supervisor 'f=/data/adb/pearl-agent/run/supervisor.pid
 read pid start < "$f" &&
