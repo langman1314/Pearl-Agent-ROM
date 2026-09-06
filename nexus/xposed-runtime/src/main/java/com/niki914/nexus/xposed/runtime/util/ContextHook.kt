@@ -1,7 +1,9 @@
 package com.niki914.nexus.xposed.runtime.util
 
 import android.app.Application
+import android.content.Context
 import com.niki914.nexus.xposed.api.util.ContextProvider
+import com.niki914.nexus.xposed.api.util.xlog
 import com.niki914.nexus.xposed.runtime.core.runtime.Hook
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
@@ -27,18 +29,29 @@ class ContextHook : Hook {
 
         lpparam.hookMethod(
             "android.app.Application",
-            "onCreate",
+            "attach",
+            Context::class.java,
             after = { param ->
-                provide(param.thisObject as Application, "Application.onCreate")
+                provide(param.thisObject as Application, "Application.attach")
+            }
+        )
+        lpparam.hookMethod(
+            "android.app.Instrumentation",
+            "callApplicationOnCreate",
+            Application::class.java,
+            before = { param ->
+                (param.args.firstOrNull() as? Application)?.let {
+                    provide(it, "Instrumentation.callApplicationOnCreate")
+                }
             }
         )
     }
 
     private fun provide(application: Application, source: String) {
         if (ContextProvider.provide(application)) {
-            XposedBridge.log(
-                "[$name] Context successfully provided from $source: ${application.packageName}"
-            )
+            val message = "[$name] Context successfully provided from $source: ${application.packageName}"
+            XposedBridge.log(message)
+            xlog(message)
         }
     }
 }
