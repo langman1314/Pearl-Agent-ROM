@@ -16,7 +16,7 @@ class CaptureInstructionInputHook(
 ) : SubHook() {
 
     override val hookTarget: HookTarget?
-        get() = XiaoaiConfigProvider.CaptureResponseTarget.hookTarget
+        get() = XiaoaiConfigProvider.CaptureInstructionInput.hookTarget
 
     override fun beforeHook(param: XC_MethodHook.MethodHookParam) {
         val instruction = param.args.firstOrNull() ?: return

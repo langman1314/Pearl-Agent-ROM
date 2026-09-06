@@ -37,7 +37,10 @@ class BlockNativeInstructionByWhitelistHook(
         val allowedFullNames = config.allowedInstructionFullNames
         if (fullName != null && fullName in allowedFullNames) return
 
-        param.result = null
+        param.result = if (hookTarget?.returnType == "boolean") true else null
+        com.niki914.nexus.xposed.api.util.xlog(
+            "[$name] instruction_blocked fullName=${fullName.orEmpty()}"
+        )
         val eventContext = XEvent.snapshotContext()
         scope.launch {
             XEvent.withContext(eventContext) {

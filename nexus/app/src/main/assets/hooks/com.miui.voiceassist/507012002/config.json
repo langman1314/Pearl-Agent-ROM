@@ -23,6 +23,20 @@
           "query_arg_index": 1
         }
       },
+      "capture_instruction_input": {
+        "target": {
+          "hook_kind": "method",
+          "hook_timing": "before",
+          "owner_class": "f10.m0",
+          "method_name": "handle",
+          "param_types": [
+            "com.xiaomi.ai.api.common.Instruction",
+            "java.lang.String"
+          ],
+          "return_type": "boolean"
+        },
+        "business": {}
+      },
       "capture_response_target": {
         "target": {
           "hook_kind": "method",
@@ -108,12 +122,13 @@
         "target": {
           "hook_kind": "method",
           "hook_timing": "before",
-          "owner_class": "cb0.db",
-          "method_name": "A0",
+          "owner_class": "f10.m0",
+          "method_name": "handle",
           "param_types": [
-            "com.xiaomi.ai.api.common.Instruction"
+            "com.xiaomi.ai.api.common.Instruction",
+            "java.lang.String"
           ],
-          "return_type": "void"
+          "return_type": "boolean"
         },
         "business": {
           "target_dialog_id_getter": "getDialogId",
@@ -122,7 +137,8 @@
           "optional_has_value_method": "isPresent",
           "optional_value_getter": "get",
           "allowed_instruction_full_names": [
-            "Nlp.UpdateStreamProperties"
+            "Nlp.UpdateStreamProperties",
+            "Template.Query"
           ]
         }
       },

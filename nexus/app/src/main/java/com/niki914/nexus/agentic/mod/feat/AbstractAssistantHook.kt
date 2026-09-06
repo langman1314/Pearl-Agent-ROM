@@ -39,7 +39,6 @@ abstract class AbstractAssistantHook(
     final override fun onHook(lpparam: XC_LoadPackage.LoadPackageParam) {
         onBeforeInstallHooks(lpparam)
         installSessionHooks(lpparam)
-        installResponseHooks(lpparam)
         installInputHooks(lpparam) { roomId, query ->
             // Establish the default Nexus takeover synchronously inside the host's input
             // before-hook. Local XiaoAi commands can emit an instruction before a
@@ -54,6 +53,7 @@ abstract class AbstractAssistantHook(
                 handleCapturedQuery(roomId, query, provisionalTurn)
             }
         }
+        installResponseHooks(lpparam)
     }
 
     protected open fun onBeforeInstallHooks(lpparam: XC_LoadPackage.LoadPackageParam) = Unit

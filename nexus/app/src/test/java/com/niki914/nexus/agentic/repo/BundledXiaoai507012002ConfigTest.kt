@@ -28,14 +28,13 @@ class BundledXiaoai507012002ConfigTest {
         assertFalse(root.getValue("is_beta").jsonPrimitive.boolean)
 
         val actions = root.getValue("config").jsonObject.getValue("actions").jsonObject
-        val dispatcherActions = listOf(
+        val cardDispatcherActions = listOf(
             "capture_response_target",
             "block_native_text_stream",
             "block_native_tts_stream",
-            "block_native_instruction_whitelist",
             "render_text_stream_card",
         )
-        dispatcherActions.forEach { actionName ->
+        cardDispatcherActions.forEach { actionName ->
             val target = actions.getValue(actionName).jsonObject.getValue("target").jsonObject
             assertEquals("cb0.db", target.getValue("owner_class").jsonPrimitive.content)
             assertEquals("A0", target.getValue("method_name").jsonPrimitive.content)
@@ -46,6 +45,16 @@ class BundledXiaoai507012002ConfigTest {
             assertEquals("void", target.getValue("return_type").jsonPrimitive.content)
         }
 
+        listOf("capture_instruction_input", "block_native_instruction_whitelist").forEach { actionName ->
+            assertTarget(
+                actions = actions,
+                actionName = actionName,
+                ownerClass = "f10.m0",
+                methodName = "handle",
+                paramTypes = listOf("com.xiaomi.ai.api.common.Instruction", "java.lang.String"),
+                returnType = "boolean",
+            )
+        }
         assertTarget(
             actions = actions,
             actionName = "capture_input",
@@ -71,6 +80,12 @@ class BundledXiaoai507012002ConfigTest {
             returnType = "void",
         )
 
+        val instructionWhitelist = actions.getValue("block_native_instruction_whitelist")
+            .jsonObject.getValue("business").jsonObject
+            .getValue("allowed_instruction_full_names").jsonArray
+            .map { it.jsonPrimitive.content }
+        assertEquals(listOf("Nlp.UpdateStreamProperties", "Template.Query"), instructionWhitelist)
+        assertFalse("Application.Operate" in instructionWhitelist)
         assertFalse(file.readText().contains("cb0.eb"))
     }
 

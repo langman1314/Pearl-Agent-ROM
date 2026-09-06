@@ -18,6 +18,12 @@ object XiaoaiConfigProvider : BaseConfigProvider() {
             get() = getInt("$P.business.query_arg_index")
     }
 
+    object CaptureInstructionInput {
+        private const val P = "actions.capture_instruction_input"
+        val hookTarget: HookTarget?
+            get() = parseHookTarget("$P.target")
+    }
+
     object CaptureResponseTarget {
         private const val P = "actions.capture_response_target"
         val hookTarget: HookTarget?
