@@ -41,25 +41,41 @@ abstract class AbstractAssistantHook(
         installSessionHooks(lpparam)
         installResponseHooks(lpparam)
         installInputHooks(lpparam) { roomId, query ->
+            // Establish the default Nexus takeover synchronously inside the host's input
+            // before-hook. Local XiaoAi commands can emit an instruction before a
+            // coroutine has time to read settings; without this provisional state the
+            // native command races past the response blockers.
+            val provisionalTurn = ConversationTurnState().nextTurn(
+                query = query,
+                mode = TurnMode.InjectedLLM,
+            )
+            ActiveTurnStore.setCurrent(provisionalTurn)
             scope.launch {
-                handleCapturedQuery(roomId, query)
+                handleCapturedQuery(roomId, query, provisionalTurn)
             }
         }
     }
 
     protected open fun onBeforeInstallHooks(lpparam: XC_LoadPackage.LoadPackageParam) = Unit
 
-    private suspend fun handleCapturedQuery(roomId: String, query: String) {
+    private suspend fun handleCapturedQuery(
+        roomId: String,
+        query: String,
+        provisionalTurn: ConversationTurnState,
+    ) {
         val takeoverDecision = resolveTakeover(query)
         val turnMode = when (takeoverDecision.target) {
             RuntimeTakeoverTarget.NATIVE_ASSISTANT -> TurnMode.NativeTakeover
             RuntimeTakeoverTarget.NEXUS -> TurnMode.InjectedLLM
         }
-        val nextTurnState = ConversationTurnState().nextTurn(
-            query = query,
-            mode = turnMode
-        )
+        val nextTurnState = provisionalTurn.copy(mode = turnMode)
+        if (ActiveTurnStore.getCurrent()?.turnId != provisionalTurn.turnId) {
+            return
+        }
         ActiveTurnStore.setCurrent(nextTurnState)
+        com.niki914.nexus.xposed.api.util.xlog(
+            "[$name] takeover decided mode=${nextTurnState.mode.eventName()} turnId=${nextTurnState.turnId}"
+        )
         val takeoverFields = mapOf(
             "mode" to nextTurnState.mode.eventName(),
             "takeoverTarget" to takeoverDecision.target.name,
