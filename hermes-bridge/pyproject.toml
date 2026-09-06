@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pearl-hermes-bridge"
-version = "0.1.0"
+version = "0.1.1"
 description = "Loopback MCP bridge from Nexus to Hermes Agent"
 requires-python = ">=3.11,<3.14"
-license = "MIT"
+license = {text = "MIT"}
 dependencies = ["mcp==2.0.0"]
 
 [project.scripts]

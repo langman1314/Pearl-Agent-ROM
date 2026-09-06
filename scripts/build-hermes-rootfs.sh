@@ -209,7 +209,7 @@ cat >"$rootfs/opt/pearl-agent/BUILD.json" <<EOF
   "debian_suite": "$DEBIAN_SUITE",
   "debian_snapshot": "$DEBIAN_SNAPSHOT",
   "hermes_commit": "$EXPECTED_HERMES_COMMIT",
-  "bridge_version": "0.1.0",
+  "bridge_version": "0.1.1",
   "python": "3.11",
   "uv": "$UV_VERSION",
   "uv_wheel_sha256": "$UV_WHEEL_SHA256",
