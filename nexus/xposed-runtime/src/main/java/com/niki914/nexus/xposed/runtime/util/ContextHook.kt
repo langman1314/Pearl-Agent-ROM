@@ -3,8 +3,8 @@ package com.niki914.nexus.xposed.runtime.util
 import android.app.Application
 import com.niki914.nexus.xposed.api.util.ContextProvider
 import com.niki914.nexus.xposed.runtime.core.runtime.Hook
-import de.robv.android.xposed.AndroidAppHelper
 import de.robv.android.xposed.XposedBridge
+import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 
 /**
@@ -14,9 +14,14 @@ class ContextHook : Hook {
     override val name: String = "ContextHook"
 
     override fun onHook(lpparam: XC_LoadPackage.LoadPackageParam) {
-        val currentApplication = AndroidAppHelper.currentApplication()
+        val currentApplication = runCatching {
+            XposedHelpers.callStaticMethod(
+                XposedHelpers.findClass("android.app.ActivityThread", null),
+                "currentApplication",
+            ) as? Application
+        }.getOrNull()
         if (currentApplication != null) {
-            provide(currentApplication, "current application")
+            provide(currentApplication, "ActivityThread.currentApplication")
             return
         }
 
