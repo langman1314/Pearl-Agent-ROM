@@ -91,7 +91,7 @@ class WebSettingsApi internal constructor(
         if (settings.config == null) {
             return null
         }
-        if (!settings.matches(target)) {
+        if (!settings.matches(target) || !settings.hasCompatibleSchema(target)) {
             return null
         }
         return WebSettingsResult.Success(
@@ -109,14 +109,22 @@ class WebSettingsApi internal constructor(
     ): WebSettingsResult {
         val exactResult = fetchConfig(target.packageName, target.versionCode)
         return when (exactResult) {
-            is ConfigFetchResult.Success -> persistSuccess(
-                context = context,
-                json = exactResult.json,
-                requestedVersionCode = target.versionCode,
-                resolvedVersionCode = target.versionCode,
-                source = WebSettingsSource.Network,
-                isFallbackVersion = false,
-            )
+            is ConfigFetchResult.Success -> {
+                val networkSettings = WebSettings(parseJsonObject(exactResult.json))
+                if (!networkSettings.hasCompatibleSchema(target)) {
+                    loadBundledExact(context, target)
+                        ?: WebSettingsResult.RequestFailed(WebSettingsFailureReason.InvalidConfig)
+                } else {
+                    persistSuccess(
+                        context = context,
+                        json = exactResult.json,
+                        requestedVersionCode = target.versionCode,
+                        resolvedVersionCode = target.versionCode,
+                        source = WebSettingsSource.Network,
+                        isFallbackVersion = false,
+                    )
+                }
+            }
 
             ConfigFetchResult.NotFound -> loadBundledExact(context, target)
                 ?: if (target.packageName == HostApp.XiaoAi.packageName) {
@@ -323,6 +331,15 @@ class WebSettingsApi internal constructor(
         return packageName == target.packageName && requestedVersionCode == target.versionCode
     }
 
+    private fun WebSettings.hasCompatibleSchema(target: WebSettingsTarget): Boolean {
+        val requiredSchema = when {
+            target.packageName == HostApp.XiaoAi.packageName &&
+                target.versionCode == XIAOAI_GLOBAL_DISPATCH_VERSION -> 2
+            else -> 1
+        }
+        return schemaVersion >= requiredSchema
+    }
+
     private fun WebSettings.withResolvedMetadata(
         requestedVersionCode: Long,
         resolvedVersionCode: Long,
@@ -373,6 +390,7 @@ class WebSettingsApi internal constructor(
         private const val REMOTE_BASE_URL = "https://gitee.com/niki914/nexus-res/raw/main/"
         private const val BUNDLED_CONFIG_ROOT = "hooks"
         private const val NEXUS_PACKAGE_NAME = "com.niki914.nexus.agentic"
+        private const val XIAOAI_GLOBAL_DISPATCH_VERSION = 507012002L
         private const val HTTP_NOT_FOUND = 404
         private val httpClient = OkHttpClient()
     }

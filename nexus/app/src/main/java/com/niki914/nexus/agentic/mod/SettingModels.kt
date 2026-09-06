@@ -51,6 +51,9 @@ class WebSettings(props: JsonObject = JsonObject(emptyMap())) : XSettings(props)
     val versionCode: Long
         get() = getLong("version_code")
 
+    val schemaVersion: Int
+        get() = getInt("schema_version", 1)
+
     val requestedVersionCode: Long
         get() = getLong("requested_version_code", versionCode)
 

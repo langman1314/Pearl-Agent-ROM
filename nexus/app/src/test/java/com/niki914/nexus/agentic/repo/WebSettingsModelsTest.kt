@@ -43,6 +43,14 @@ class WebSettingsModelsTest {
         assertEquals(120803L, settings.versionCode)
         assertEquals(120803L, settings.requestedVersionCode)
         assertEquals(120803L, settings.resolvedVersionCode)
+        assertEquals(1, settings.schemaVersion)
+    }
+
+    @Test
+    fun schemaVersion_readsExplicitVersion() {
+        val settings = WebSettings(jsonObject("""{"schema_version":2,"config":{"actions":{}}}"""))
+
+        assertEquals(2, settings.schemaVersion)
     }
 
     @Test
