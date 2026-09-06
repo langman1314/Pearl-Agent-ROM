@@ -7,7 +7,7 @@ import de.robv.android.xposed.XC_MethodHook
 
 /** 在宿主创建响应目标时捕获目标对象，供后续文字流分片注入。 */
 class CaptureResponseTargetHook(
-    private val onCaptured: (target: Any) -> Unit = {}
+    private val onCaptured: (target: Any, dialogId: String) -> Unit = { _, _ -> }
 ) : SubHook() {
 
     override val hookTarget: HookTarget?
@@ -19,6 +19,6 @@ class CaptureResponseTargetHook(
         if (dialogId.isNullOrBlank()) {
             return
         }
-        onCaptured(param.thisObject)
+        onCaptured(param.thisObject, dialogId)
     }
 }

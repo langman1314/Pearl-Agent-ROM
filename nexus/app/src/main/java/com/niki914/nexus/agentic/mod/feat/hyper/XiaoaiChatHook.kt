@@ -5,6 +5,7 @@ import com.niki914.nexus.agentic.mod.feat.AbstractAssistantHook
 import com.niki914.nexus.agentic.mod.feat.hyper.subhooks.BlockNativeInstructionByWhitelistHook
 import com.niki914.nexus.agentic.mod.feat.hyper.subhooks.BlockNativeTtsPlaybackHook
 import com.niki914.nexus.agentic.mod.feat.hyper.subhooks.CaptureInputHook
+import com.niki914.nexus.agentic.mod.feat.hyper.subhooks.CaptureInstructionInputHook
 import com.niki914.nexus.agentic.mod.feat.hyper.subhooks.CaptureResponseTargetHook
 import com.niki914.nexus.agentic.mod.feat.hyper.subhooks.RenderTextStreamCardHook
 import com.niki914.nexus.agentic.runtime.client.AssistantTextSource
@@ -25,13 +26,18 @@ class XiaoaiChatHook(
 
     @Volatile
     private var capturedResponseTarget: Any? = null
+    @Volatile
+    private var capturedResponseDialogId: String? = null
     private var targetReady = CompletableDeferred<Unit>()
+    private val inputLock = Any()
+    private var lastCapturedInput: Pair<String, String>? = null
 
     override suspend fun onSessionReset() {
         super.onSessionReset()
         targetReady.cancel()
         targetReady = CompletableDeferred()
         capturedResponseTarget = null
+        capturedResponseDialogId = null
         renderTextStreamCardHook?.reset()
     }
 
@@ -45,8 +51,9 @@ class XiaoaiChatHook(
 
     override fun installResponseHooks(lpparam: XC_LoadPackage.LoadPackageParam) {
         CaptureResponseTargetHook(
-            onCaptured = { target ->
+            onCaptured = { target, dialogId ->
                 capturedResponseTarget = target
+                capturedResponseDialogId = dialogId
                 targetReady.complete(Unit)
             }
         ).onHook(lpparam)
@@ -63,13 +70,28 @@ class XiaoaiChatHook(
         lpparam: XC_LoadPackage.LoadPackageParam,
         onInput: (roomId: String, query: String) -> Unit
     ) {
-        CaptureInputHook(onInput = onInput).onHook(lpparam)
+        val deduplicatedInput: (String, String) -> Unit = { roomId, query ->
+            val current = roomId to query
+            val shouldDeliver = synchronized(inputLock) {
+                if (lastCapturedInput == current) {
+                    false
+                } else {
+                    lastCapturedInput = current
+                    true
+                }
+            }
+            if (shouldDeliver) onInput(roomId, query)
+        }
+        CaptureInstructionInputHook(onInput = deduplicatedInput).onHook(lpparam)
+        CaptureInputHook(onInput = deduplicatedInput).onHook(lpparam)
     }
 
     // 渲染前等待宿主 UI 卡片；超时必须 fail-open，避免 Hook 失配时挂死或吞掉原生回答。
     override suspend fun dispatchQueryToLLM(turnId: Long, roomId: String, query: String) {
-        targetReady.cancel()
-        targetReady = CompletableDeferred()
+        if (capturedResponseDialogId != roomId || capturedResponseTarget == null) {
+            targetReady.cancel()
+            targetReady = CompletableDeferred()
+        }
 
         val eventContext = XEvent.snapshotContext()
         XEvent.withContext(eventContext) {
