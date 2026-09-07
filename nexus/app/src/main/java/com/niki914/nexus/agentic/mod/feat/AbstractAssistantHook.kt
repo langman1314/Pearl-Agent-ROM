@@ -69,7 +69,19 @@ abstract class AbstractAssistantHook(
         provisionalTurn: ConversationTurnState,
         requestId: String,
     ) {
-        val takeoverDecision = resolveTakeover(query)
+        val takeoverDecision = try {
+            resolveTakeover(query)
+        } catch (error: Throwable) {
+            textSource.releaseReservation(requestId)
+            if (ActiveTurnStore.getCurrent()?.turnId == provisionalTurn.turnId) {
+                ActiveTurnStore.clear()
+            }
+            com.niki914.nexus.xposed.api.util.xlog(
+                "[$name] takeover resolution failed open turnId=${provisionalTurn.turnId} " +
+                        "error=${error.javaClass.simpleName}"
+            )
+            return
+        }
         val turnMode = when (takeoverDecision.target) {
             RuntimeTakeoverTarget.NATIVE_ASSISTANT -> TurnMode.NativeTakeover
             RuntimeTakeoverTarget.NEXUS -> TurnMode.InjectedLLM

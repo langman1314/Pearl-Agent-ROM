@@ -73,7 +73,7 @@ class AgentRuntimeService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "agent_runtime"
         private const val MAX_QUERY_LENGTH = 8192
-        private const val RESERVATION_TIMEOUT_MS = 2_000L
+        private const val RESERVATION_TIMEOUT_MS = 5_000L
         private const val STORE_CHANNEL_ID = "nexus_xservice_default_channel"
         private const val STORE_CHANNEL_NAME = "Nexus"
     }
