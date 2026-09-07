@@ -11,9 +11,7 @@ import com.niki914.nexus.agentic.runtime.client.AssistantTextSource
 import com.niki914.nexus.xposed.api.xevent.XEvent
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.withTimeoutOrNull
 
 class XiaoaiChatHook(
     scope: CoroutineScope,
@@ -23,19 +21,12 @@ class XiaoaiChatHook(
 
     private var renderTextStreamCardHook: RenderTextStreamCardHook? = null
 
-    @Volatile
-    private var capturedResponseTarget: Any? = null
-    @Volatile
-    private var capturedResponseDialogId: String? = null
-    private var targetReady = CompletableDeferred<Unit>()
+    private val responseTargets = XiaoaiResponseTargetRegistry()
     private val inputDeduplicator = XiaoaiInputDeduplicator()
 
     override suspend fun onSessionReset() {
         super.onSessionReset()
-        targetReady.cancel()
-        targetReady = CompletableDeferred()
-        capturedResponseTarget = null
-        capturedResponseDialogId = null
+        responseTargets.reset()
         inputDeduplicator.reset()
         renderTextStreamCardHook?.reset()
     }
@@ -50,11 +41,7 @@ class XiaoaiChatHook(
 
     override fun installResponseHooks(lpparam: XC_LoadPackage.LoadPackageParam) {
         CaptureResponseTargetHook(
-            onCaptured = { target, dialogId ->
-                capturedResponseTarget = target
-                capturedResponseDialogId = dialogId
-                targetReady.complete(Unit)
-            }
+            onCaptured = { target, dialogId -> responseTargets.capture(dialogId, target) }
         ).onHook(lpparam)
 
         renderTextStreamCardHook = RenderTextStreamCardHook()
@@ -79,29 +66,29 @@ class XiaoaiChatHook(
         requestId: String,
         query: String,
     ) {
-        if (capturedResponseDialogId != roomId || capturedResponseTarget == null) {
-            targetReady.cancel()
-            targetReady = CompletableDeferred()
-        }
-
         val eventContext = XEvent.snapshotContext()
         XEvent.withContext(eventContext) {
             try {
                 textSource.submitReserved(requestId, query).collect { frame ->
-                    if (!awaitResponseTarget()) throw ResponseTargetTimeoutException()
-                    renderStreamCard(turnId, roomId, frame.text, frame.isFirst, frame.isFinal)
+                    val target = responseTargets.await(roomId, RESPONSE_TARGET_TIMEOUT_MS)
+                        ?: throw ResponseTargetTimeoutException()
+                    renderToTarget(
+                        turnId, roomId, target,
+                        frame.text, frame.isFirst, frame.isFinal,
+                    )
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: ResponseTargetTimeoutException) {
-                failOpenToNativeAssistant()
+                failOpenToNativeAssistant(turnId, roomId)
             } catch (e: Exception) {
-                if (!awaitResponseTarget()) {
-                    failOpenToNativeAssistant()
+                val target = responseTargets.await(roomId, RESPONSE_TARGET_TIMEOUT_MS)
+                if (target == null) {
+                    failOpenToNativeAssistant(turnId, roomId)
                     return@withContext
                 }
-                renderStreamCard(
-                    turnId, roomId,
+                renderToTarget(
+                    turnId, roomId, target,
                     e.message ?: "Service unavailable",
                     true, true,
                 )
@@ -109,15 +96,11 @@ class XiaoaiChatHook(
         }
     }
 
-    private suspend fun awaitResponseTarget(): Boolean =
-        withTimeoutOrNull(RESPONSE_TARGET_TIMEOUT_MS) {
-            targetReady.await()
-            true
-        } == true
-
-    private suspend fun failOpenToNativeAssistant() {
-        ActiveTurnStore.clear()
-        textSource.cancel()
+    private suspend fun failOpenToNativeAssistant(turnId: Long, roomId: String) {
+        responseTargets.clear(roomId)
+        if (ActiveTurnStore.clearIfOwner(turnId, roomId)) {
+            textSource.cancel()
+        }
     }
 
     private class ResponseTargetTimeoutException : IllegalStateException("XiaoAi response target timed out")
@@ -125,6 +108,18 @@ class XiaoaiChatHook(
     override suspend fun renderStreamCard(
         turnId: Long,
         roomId: String,
+        chunk: String,
+        isFirst: Boolean,
+        isFinal: Boolean,
+    ) {
+        val target = responseTargets.await(roomId, RESPONSE_TARGET_TIMEOUT_MS) ?: return
+        renderToTarget(turnId, roomId, target, chunk, isFirst, isFinal)
+    }
+
+    private suspend fun renderToTarget(
+        turnId: Long,
+        roomId: String,
+        target: Any,
         chunk: String,
         isFirst: Boolean,
         isFinal: Boolean
@@ -136,11 +131,15 @@ class XiaoaiChatHook(
         renderTextStreamCardHook?.render(
             turnId = turnId,
             dialogId = roomId,
-            target = capturedResponseTarget,
+            target = target,
             chunk = chunk,
             isFirst = isFirst,
             isFinal = isFinal
         )
+        if (isFinal) {
+            responseTargets.clear(roomId)
+            ActiveTurnStore.clearIfOwner(turnId, roomId)
+        }
     }
 
     private companion object {

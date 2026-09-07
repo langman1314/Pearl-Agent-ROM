@@ -17,6 +17,19 @@ class ActiveTurnStoreTest {
         ActiveTurnStore.clear()
     }
 
+    @Test
+    fun staleOwnerCannotClearReplacementTurn() {
+        val old = ConversationTurnState().nextTurn("room-old", "old", TurnMode.InjectedLLM)
+        val replacement = ConversationTurnState().nextTurn("room-new", "new", TurnMode.InjectedLLM)
+        ActiveTurnStore.setCurrent(old)
+        ActiveTurnStore.setCurrent(replacement)
+
+        assertFalse(ActiveTurnStore.clearIfOwner(old.turnId, old.roomId))
+        assertEquals(replacement, ActiveTurnStore.getCurrent())
+        assertTrue(ActiveTurnStore.clearIfOwner(replacement.turnId, replacement.roomId))
+        assertNull(ActiveTurnStore.getCurrent())
+    }
+
     @After
     fun tearDown() {
         ActiveTurnStore.clear()

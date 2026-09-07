@@ -15,6 +15,14 @@ object ActiveTurnStore {
         current.set(null)
     }
 
+    fun clearIfOwner(turnId: Long, roomId: String): Boolean {
+        while (true) {
+            val state = current.get() ?: return false
+            if (state.turnId != turnId || state.roomId != roomId) return false
+            if (current.compareAndSet(state, null)) return true
+        }
+    }
+
     fun isCurrentInjected(): Boolean = getCurrent()?.mode == TurnMode.InjectedLLM
 
     fun isActiveInjection(turnId: Long, roomId: String? = null): Boolean {
