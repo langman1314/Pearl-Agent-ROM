@@ -139,6 +139,7 @@
           "optional_value_getter": "get",
           "allowed_instruction_full_names": [
             "Nlp.UpdateStreamProperties",
+            "SpeechRecognizer.RecognizeResult",
             "Template.Query"
           ]
         }

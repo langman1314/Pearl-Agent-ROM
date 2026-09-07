@@ -85,7 +85,14 @@ class BundledXiaoai507012002ConfigTest {
             .jsonObject.getValue("business").jsonObject
             .getValue("allowed_instruction_full_names").jsonArray
             .map { it.jsonPrimitive.content }
-        assertEquals(listOf("Nlp.UpdateStreamProperties", "Template.Query"), instructionWhitelist)
+        assertEquals(
+            listOf(
+                "Nlp.UpdateStreamProperties",
+                "SpeechRecognizer.RecognizeResult",
+                "Template.Query",
+            ),
+            instructionWhitelist,
+        )
         assertFalse("Application.Operate" in instructionWhitelist)
         assertFalse(file.readText().contains("cb0.eb"))
     }
