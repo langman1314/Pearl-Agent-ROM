@@ -3,6 +3,7 @@ package com.niki914.nexus.agentic.mod.feat
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import com.niki914.nexus.xposed.api.util.xlog
 import com.niki914.nexus.xposed.runtime.util.hookMethod
 import com.niki914.nexus.xposed.runtime.util.resolveParamTypes
 import de.robv.android.xposed.callbacks.XC_LoadPackage
@@ -51,7 +52,10 @@ class FloatScreenResetDetector(
             val isResumedAroundDetach = absTimeDiff <= graceWindowMs
 
             if (!isResumedAroundDetach) {
+                xlog("[FloatScreenResetDetector] reset after detach graceMs=$graceWindowMs")
                 onReset()
+            } else {
+                xlog("[FloatScreenResetDetector] detach ignored due to nearby resume")
             }
         }
         pendingFloatResetCheck = check

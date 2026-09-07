@@ -41,7 +41,13 @@ class XiaoaiChatHook(
 
     override fun installResponseHooks(lpparam: XC_LoadPackage.LoadPackageParam) {
         CaptureResponseTargetHook(
-            onCaptured = { target, dialogId -> responseTargets.capture(dialogId, target) }
+            onCaptured = { target, dialogId ->
+                com.niki914.nexus.xposed.api.util.xlog(
+                    "[$name] response target captured dialogHash=${dialogId.hashCode()} " +
+                        "target=${target.javaClass.name}"
+                )
+                responseTargets.capture(dialogId, target)
+            }
         ).onHook(lpparam)
 
         renderTextStreamCardHook = RenderTextStreamCardHook()
@@ -80,6 +86,9 @@ class XiaoaiChatHook(
             } catch (e: CancellationException) {
                 throw e
             } catch (_: ResponseTargetTimeoutException) {
+                com.niki914.nexus.xposed.api.util.xlog(
+                    "[$name] response target timeout turnId=$turnId dialogHash=${roomId.hashCode()}"
+                )
                 failOpenToNativeAssistant(turnId, roomId)
             } catch (e: Exception) {
                 val target = responseTargets.await(roomId, RESPONSE_TARGET_TIMEOUT_MS)
@@ -128,6 +137,10 @@ class XiaoaiChatHook(
             return
         }
 
+        com.niki914.nexus.xposed.api.util.xlog(
+            "[$name] render frame turnId=$turnId dialogHash=${roomId.hashCode()} " +
+                "textLength=${chunk.length} first=$isFirst final=$isFinal"
+        )
         renderTextStreamCardHook?.render(
             turnId = turnId,
             dialogId = roomId,

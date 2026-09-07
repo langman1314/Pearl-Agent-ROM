@@ -11,6 +11,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Binder
+import android.util.Log
 import android.os.Build
 import android.os.DeadObjectException
 import android.os.IBinder
@@ -33,10 +34,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import com.niki914.nexus.agentic.app.R as AppR
 
 class AgentRuntimeService : Service() {
@@ -74,6 +77,8 @@ class AgentRuntimeService : Service() {
         private const val CHANNEL_ID = "agent_runtime"
         private const val MAX_QUERY_LENGTH = 8192
         private const val RESERVATION_TIMEOUT_MS = 5_000L
+        private const val TURN_TIMEOUT_MS = 65_000L
+        private const val LOG_TAG = "NexusRuntime"
         private const val STORE_CHANNEL_ID = "nexus_xservice_default_channel"
         private const val STORE_CHANNEL_NAME = "Nexus"
     }
@@ -119,7 +124,10 @@ class AgentRuntimeService : Service() {
 
         override fun reserve(requestId: String?): Boolean {
             if (!validateCaller()) return false
-            return admissionGate.reserve(requestId.orEmpty())
+            val id = requestId.orEmpty()
+            val accepted = admissionGate.reserve(id)
+            Log.i(LOG_TAG, "reserve accepted=$accepted requestHash=${id.hashCode()}")
+            return accepted
         }
 
         override fun releaseReservation(requestId: String?) {
@@ -169,6 +177,7 @@ class AgentRuntimeService : Service() {
             val job = scope.launch(start = CoroutineStart.LAZY) { executeTurn(q, cb, requestId) }
             turn = ActiveTurn(requestId, cb, job)
             if (!admissionGate.commit(requestId, turn)) {
+                Log.w(LOG_TAG, "commit rejected requestHash=${requestId.hashCode()}")
                 job.cancel()
                 try {
                     cb.asBinder().unlinkToDeath(deathRecipient, 0)
@@ -177,6 +186,7 @@ class AgentRuntimeService : Service() {
                 sendError(cb, "Turn reservation is unavailable or expired")
                 return
             }
+            Log.i(LOG_TAG, "commit accepted requestHash=${requestId.hashCode()} queryLength=${q.length}")
             job.start()
         }
 
@@ -358,25 +368,44 @@ class AgentRuntimeService : Service() {
         callback: IRenderFrameCallback,
         requestId: String,
     ) {
+        Log.i(LOG_TAG, "turn started requestHash=${requestId.hashCode()} queryLength=${query.length}")
+        var frameCount = 0
         try {
-            LLMController.stream(query, this@AgentRuntimeService).collectAsFull { frame ->
-                sendFrame(
-                    callback,
-                    RenderFrame(
-                        text = frame.text,
-                        isFirst = frame.isFirst,
-                        isFinal = frame.isFinal
-                    ),
-                )
+            withTimeout(TURN_TIMEOUT_MS) {
+                LLMController.stream(query, this@AgentRuntimeService).collectAsFull { frame ->
+                    frameCount += 1
+                    Log.i(
+                        LOG_TAG,
+                        "frame requestHash=${requestId.hashCode()} count=$frameCount " +
+                            "textLength=${frame.text.length} first=${frame.isFirst} final=${frame.isFinal}",
+                    )
+                    sendFrame(
+                        callback,
+                        RenderFrame(
+                            text = frame.text,
+                            isFirst = frame.isFirst,
+                            isFinal = frame.isFinal
+                        ),
+                    )
+                }
             }
+        } catch (e: TimeoutCancellationException) {
+            Log.e(LOG_TAG, "turn timed out requestHash=${requestId.hashCode()} frames=$frameCount", e)
+            sendFrame(
+                callback,
+                RenderFrame(text = "Nexus request timed out", isFirst = true, isFinal = true),
+            )
         } catch (e: CancellationException) {
+            Log.w(LOG_TAG, "turn cancelled requestHash=${requestId.hashCode()} frames=$frameCount")
             throw e
         } catch (e: Exception) {
+            Log.e(LOG_TAG, "turn failed requestHash=${requestId.hashCode()} frames=$frameCount", e)
             sendFrame(
                 callback,
                 RenderFrame(text = e.message ?: "Internal error", isFirst = true, isFinal = true),
             )
         } finally {
+            Log.i(LOG_TAG, "turn finished requestHash=${requestId.hashCode()} frames=$frameCount")
             try {
                 callback.asBinder().unlinkToDeath(deathRecipient, 0)
             } catch (_: Exception) {
