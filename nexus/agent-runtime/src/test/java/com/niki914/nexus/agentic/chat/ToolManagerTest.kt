@@ -56,12 +56,7 @@ class ToolManagerTest {
         assertTrue(resolved.builtinTools.single() is LocalTool.Builtin)
         assertEquals("Read current time.", resolved.builtinTools.single().description)
 
-        val customTool = resolved.customTools.filterIsInstance<LocalTool.Custom>().single()
-        assertEquals("current_time", customTool.name)
-        assertTrue(customTool.description.contains("Runs in an unprivileged Android shell"))
-        assertTrue(customTool.description.contains("terminal builtin tool"))
-        assertTrue(customTool.description.contains("cd /path && cmd"))
-        assertEquals("date +%s", customTool.command)
+        assertTrue(resolved.customTools.isEmpty())
         assertEquals(listOf("aslocate"), resolved.mcpServers.map { it.name })
         val mcpServer = resolved.mcpServers.single()
         val cachedTool = (mcpServer as McpServerDefinition.Http)
@@ -70,7 +65,7 @@ class ToolManagerTest {
         assertEquals("lookupSymbol", cachedTool.name)
         assertEquals("Lookup symbol definition", cachedTool.description)
         assertEquals("""{"type":"object"}""", cachedTool.inputSchema.toString())
-        assertEquals(listOf("time", "current_time"), resolved.allLocalToolNames())
+        assertEquals(listOf("time"), resolved.allLocalToolNames())
     }
 
     @Test
@@ -115,12 +110,30 @@ class ToolManagerTest {
         )
 
         assertEquals(listOf("time"), resolved.builtinTools.map { it.name })
-        assertEquals(listOf("current_time"), resolved.customTools.map { it.name })
+        assertTrue(resolved.customTools.isEmpty())
         val mcpServer = resolved.mcpServers.single() as McpServerDefinition.Http
         assertEquals(mapOf("Authorization" to "Bearer token"), mcpServer.headers)
         assertEquals("lookupSymbol", mcpServer.cachedTools.single().name)
         assertEquals("""{"type":"object"}""", mcpServer.cachedTools.single().inputSchema.toString())
-        assertTrue(resolved.allLocalTools().all { it.name in setOf("time", "current_time") })
+        assertEquals(listOf("time"), resolved.allLocalTools().map { it.name })
+    }
+
+    @Test
+    fun voiceRuntimeDeniesShellSshAndCustomToolManagementEvenWhenEnabled() {
+        val denied = listOf("terminal", "ssh_terminal", "create_custom_tool", "read_custom_tool")
+        val manager = ToolManager(
+            BuiltinToolRegistry(denied.map { FakeBuiltinTool(it) } + FakeBuiltinTool("launch_app"))
+        )
+        val resolved = manager.resolve(
+            customTools = listOf(CustomTool("danger", "danger", "rm -rf /", true)),
+            mcpServers = emptyList(),
+            builtinSettings = (denied + "launch_app").map {
+                BuiltinToolSetting(it, it, true)
+            },
+        )
+
+        assertEquals(listOf("launch_app"), resolved.builtinTools.map { it.name })
+        assertTrue(resolved.customTools.isEmpty())
     }
 
     private class FakeBuiltinTool(

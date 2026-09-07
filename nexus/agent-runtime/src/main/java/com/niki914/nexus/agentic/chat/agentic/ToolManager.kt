@@ -25,7 +25,11 @@ class ToolManager(
         mcpCachedTools: Map<String, List<McpTool>> = emptyMap(),
     ): ResolvedTools {
         val builtinTools = buildBuiltinTools(builtinSettings)
-        val customRuntimeTools = buildCustomTools(customTools)
+        // The default Agent runtime is reachable from hands-free voice input. Arbitrary
+        // commands and tool-authoring are therefore never exposed as model-callable tools.
+        // User configuration remains persisted for explicit management UI, but cannot
+        // expand the voice Agent's authority.
+        val customRuntimeTools = emptyList<LocalTool.Custom>()
         val mcpRuntimeServers = buildMcpServers(
             servers = mcpServers,
             cachedTools = mcpCachedTools,
@@ -40,7 +44,7 @@ class ToolManager(
 
     private fun buildBuiltinTools(settings: List<BuiltinToolSetting>): List<LocalTool.Builtin> {
         return settings
-            .filter { it.enabled }
+            .filter { it.enabled && it.name !in VOICE_DENIED_BUILTINS }
             .sortedBy { it.name }
             .mapNotNull { setting ->
                 val tool = findBuiltinTool(setting.name) ?: return@mapNotNull null
@@ -55,22 +59,6 @@ class ToolManager(
     private fun findBuiltinTool(name: String): BuiltinTool? {
         return builtinToolRegistry.find(name)
             ?: builtinToolRegistry.all().firstOrNull { it::class.simpleName == name }
-    }
-
-    private fun buildCustomTools(tools: List<CustomTool>): List<LocalTool.Custom> {
-        return tools
-            .filter { it.enabled }
-            .map { tool ->
-                LocalTool.Custom(
-                    name = tool.name,
-                    description = tool.description.withCustomShellGuidance(),
-                    enabled = tool.enabled,
-                    command = tool.command,
-                )
-            }
-            .associateBy(LocalTool.Custom::name)
-            .values
-            .toList()
     }
 
     private fun buildMcpServers(
@@ -109,11 +97,13 @@ class ToolManager(
         }
     }
 
-    private fun String.withCustomShellGuidance(): String {
-        return "$this\nRuns in an unprivileged Android shell (fixed user identity). " +
-                "For commands that need root or Shizuku privileges, use the terminal builtin tool " +
-                "with identity=root or identity=shizuku instead. " +
-                "If the command depends on a working directory, create it as `cd /path && cmd`."
+    private companion object {
+        val VOICE_DENIED_BUILTINS = setOf(
+            "terminal",
+            "ssh_terminal",
+            "create_custom_tool",
+            "read_custom_tool",
+        )
     }
 
 }
