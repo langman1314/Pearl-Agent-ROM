@@ -2,9 +2,9 @@
 
 ## 候选版本
 
-- Nexus：`1.0.1-pearl.13`，versionCode `19`
-- APK：`D:\PearlAgentBuild\releases\nexus-1.0.1-pearl.13-v19\Nexus-1.0.1-pearl.13-v19.apk`
-- APK SHA-256：`44b03f5822211948daa8c833a07fbd86624a8e32dde6d7e5cce170ea8082e552`
+- Nexus：`1.0.1-pearl.14`，versionCode `20`
+- APK：构建完成后写入 `D:\PearlAgentBuild\releases\nexus-1.0.1-pearl.14-v20\Nexus-1.0.1-pearl.14-v20.apk`
+- APK SHA-256：构建完成后写入
 - 签名：APK Signature Scheme v2，单 signer，RSA-4096
 - 证书 SHA-256：`01e17b4c40f9b87973dc0c4bd05b7e36bcf2585eac64a5558e8973ed06f482d4`
 
@@ -14,13 +14,13 @@
 
 1. `adb devices -l` 必须出现预期 serial；仅有 USB/MTP 不算 ADB 可用。
 2. 读取设备型号、codename、SDK、当前 Nexus versionCode、XiaoAi versionCode 和 APK path。
-3. 拉取手机实际 XiaoAi APK，计算 SHA-256，必须与 bundled 507012002 config 的 hash 一致；不一致时不得启用精确 Hook。
+3. 本地官方 ROM 缓存中的 XiaoAi 507012002 APK 已按 SHA-256 `326fe0601b11698e70f96aca5dc05d1c783cf675ebc872024e96b405aaf64406` 精确确认，并完成目标 API/混淆类反编译。真机恢复后仍需读取手机实际 APK hash；不一致时不得启用精确 Hook。
 4. 不卸载 Nexus、不清数据、不修改 boot/vbmeta/super/preloader/GPT/slot B。
 
 ## 安装与启动
 
 1. 使用 `adb install -r` 安装候选 APK；必须保持签名和应用数据。
-2. 验证设备报告 versionCode 19、versionName `1.0.1-pearl.13`。
+2. 验证设备报告 versionCode 20、versionName `1.0.1-pearl.14`。
 3. 确认 Vector/LSPosed scope 包含 `com.miui.voiceassist`，重启宿主进程或设备使 Hook 生效。
 4. 确认 Agent module、Hermes bridge 和 loopback MCP listener 健康；不得打印 bearer token。
 
