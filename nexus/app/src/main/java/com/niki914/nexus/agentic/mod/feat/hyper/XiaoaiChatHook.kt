@@ -2,7 +2,6 @@ package com.niki914.nexus.agentic.mod.feat.hyper
 
 import com.niki914.nexus.agentic.chat.ActiveTurnStore
 import com.niki914.nexus.agentic.mod.feat.AbstractAssistantHook
-import com.niki914.nexus.agentic.mod.feat.hyper.subhooks.BlockNativeTtsPlaybackHook
 import com.niki914.nexus.agentic.mod.feat.hyper.subhooks.CaptureInputHook
 import com.niki914.nexus.agentic.mod.feat.hyper.subhooks.CaptureInstructionInputHook
 import com.niki914.nexus.agentic.mod.feat.hyper.subhooks.CaptureResponseTargetHook
@@ -56,8 +55,6 @@ class XiaoaiChatHook(
                 targetReady.complete(Unit)
             }
         ).onHook(lpparam)
-
-        BlockNativeTtsPlaybackHook(scope).onHook(lpparam)
 
         renderTextStreamCardHook = RenderTextStreamCardHook()
             .also { it.onHook(lpparam) }
