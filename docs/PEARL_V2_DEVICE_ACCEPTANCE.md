@@ -2,9 +2,9 @@
 
 ## 候选版本
 
-- Nexus：`1.0.1-pearl.15`，versionCode `21`
-- APK：`D:\PearlAgentBuild\releases\nexus-1.0.1-pearl.15-v21\Nexus-1.0.1-pearl.15-v21.apk`
-- APK SHA-256：`be375e91f4e7fd3c434222ae548074d85db2ecba3adb424d027cb51d90b99dd1`
+- Nexus：`1.0.1-pearl.16`，versionCode `22`
+- APK：构建完成后写入 `D:\PearlAgentBuild\releases\nexus-1.0.1-pearl.16-v22\Nexus-1.0.1-pearl.16-v22.apk`
+- APK SHA-256：构建完成后写入
 - 签名：APK Signature Scheme v2，单 signer，RSA-4096
 - 证书 SHA-256：`01e17b4c40f9b87973dc0c4bd05b7e36bcf2585eac64a5558e8973ed06f482d4`
 
@@ -20,7 +20,7 @@
 ## 安装与启动
 
 1. 使用 `adb install -r` 安装候选 APK；必须保持签名和应用数据。
-2. 验证设备报告 versionCode 21、versionName `1.0.1-pearl.15`。
+2. 验证设备报告 versionCode 22、versionName `1.0.1-pearl.16`。
 3. 确认 Vector/LSPosed scope 包含 `com.miui.voiceassist`，重启宿主进程或设备使 Hook 生效。
 4. 确认 Agent module、Hermes bridge 和 loopback MCP listener 健康；不得打印 bearer token。
 
