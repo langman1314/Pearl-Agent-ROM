@@ -26,6 +26,7 @@ import com.niki914.nexus.xposed.api.util.ContextProvider
 import kotlinx.coroutines.delay
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Accessibility service interaction controller.
@@ -49,12 +50,15 @@ interface IAccessibility {
 
 enum class NodeAction { CLICK, LONG_CLICK, SET_TEXT, SCROLL_FORWARD, SCROLL_BACKWARD }
 enum class InteractionMethod { ACCESSIBILITY, SHELL }
-data class ScreenSnapshot(val yaml: String, val nodeCount: Int)
+data class ScreenSnapshot(val snapshotId: Long, val yaml: String, val nodeCount: Int)
 
 object AccessibilityController {
 
     private var serviceInstance: IAccessibility? = null
     private val nodeCache = ConcurrentHashMap<Int, AccessibilityNodeInfo>()
+    private val snapshotIds = AtomicLong(System.currentTimeMillis())
+    @Volatile
+    private var activeSnapshotId: Long? = null
 
     /** Set by the app module before any screen-interaction calls. */
     @Volatile
@@ -72,6 +76,8 @@ object AccessibilityController {
     fun onTurnEnd() {
         pointerShown = false
         pointerOverlay?.hide()
+        nodeCache.clear()
+        activeSnapshotId = null
     }
 
     private data class ScreenContext(
@@ -96,6 +102,7 @@ object AccessibilityController {
     fun clearService() {
         serviceInstance = null
         nodeCache.clear()
+        activeSnapshotId = null
     }
 
     fun clearPointerOverlay() {
@@ -292,7 +299,8 @@ object AccessibilityController {
             )
         }
 
-        return Result.success(ScreenSnapshot(yaml, nodeCache.size))
+        val snapshotId = publishSnapshot()
+        return Result.success(ScreenSnapshot(snapshotId, yaml, nodeCache.size))
     }
 
     /**
@@ -371,6 +379,7 @@ object AccessibilityController {
             return Result.failure(e)
         }
 
+        val snapshotId = publishSnapshot()
         val ctx = ContextProvider.await()
         val screenW = ctx.resources.displayMetrics.widthPixels
         val screenH = ctx.resources.displayMetrics.heightPixels
@@ -393,6 +402,7 @@ object AccessibilityController {
         val results = matches.take(limit)
 
         val sb = StringBuilder()
+        sb.append("snapshot_id: $snapshotId\n")
         sb.append("matched: ${results.size}")
         if (matches.size > limit) {
             sb.append(" # truncated: max_results($limit), total_hits: ${matches.size}")
@@ -406,6 +416,14 @@ object AccessibilityController {
         }
 
         return Result.success(sb.toString())
+    }
+
+    private fun publishSnapshot(): Long {
+        val snapshotId = snapshotIds.updateAndGet { previous ->
+            maxOf(previous + 1L, System.currentTimeMillis())
+        }
+        activeSnapshotId = snapshotId
+        return snapshotId
     }
 
     private fun formatSearchResultNode(
@@ -461,6 +479,7 @@ object AccessibilityController {
      * - SET_TEXT failure returns an error (no shell fallback).
      */
     suspend fun executeNodeAction(
+        snapshotId: Long,
         index: Int,
         action: NodeAction,
         text: String?,
@@ -469,6 +488,13 @@ object AccessibilityController {
         ensureService().getOrElse { e ->
             return BuiltinToolResult.failure(
                 "SERVICE_UNAVAILABLE", e.message ?: "Service unavailable"
+            )
+        }
+
+        if (activeSnapshotId != snapshotId) {
+            return BuiltinToolResult.failure(
+                "SNAPSHOT_STALE",
+                "Snapshot $snapshotId is no longer current. Re-read the screen before acting.",
             )
         }
 

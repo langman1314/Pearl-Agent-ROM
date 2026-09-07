@@ -18,7 +18,7 @@ class NodeActionBuiltin : BuiltinTool() {
     override val name: String = "node_action"
 
     override val description: String =
-        "Perform an action on a UI node identified by its index from screen_content. " +
+        "Perform an action on a UI node identified by snapshot_id and index from screen_content. " +
                 "Actions: click, long_click, set_text, scroll_forward, scroll_backward. " +
                 "Methods: accessibility (default, all actions including set_text) " +
                 "or shell (tap/long_click/scroll via input commands; cannot type)."
@@ -32,8 +32,12 @@ class NodeActionBuiltin : BuiltinTool() {
                 "Action to perform: click, long_click, set_text, scroll_forward, scroll_backward."
             required = true
         }
+        config.integer("snapshot_id") {
+            description = "Snapshot ID returned by the latest screen_content or search_nodes call."
+            required = true
+        }
         config.integer("index") {
-            description = "Node index from screen_content output."
+            description = "Node index from the same snapshot."
             required = true
         }
         config.string("text") {
@@ -53,8 +57,8 @@ class NodeActionBuiltin : BuiltinTool() {
             if (throwable is CancellationException) throw throwable
             return BuiltinToolResult.failure(
                 code = "INVALID_ARGUMENTS_JSON",
-                message = "node_action arguments must be a JSON object with action, index, and optional text and method.",
-                hint = """Example: {"action":"click","index":42} or {"action":"set_text","index":7,"text":"hello"}""",
+                message = "node_action arguments must include snapshot_id, action, index, and optional text and method.",
+                hint = """Example: {"snapshot_id":123,"action":"click","index":42}""",
                 fieldErrors = mapOf(
                     "argumentsJson" to (throwable.message ?: "Invalid JSON object.")
                 ),
@@ -80,6 +84,7 @@ class NodeActionBuiltin : BuiltinTool() {
         }
 
         return AccessibilityController.executeNodeAction(
+            snapshotId = args.snapshotId,
             index = args.index,
             action = action,
             text = args.text,
@@ -98,6 +103,8 @@ class NodeActionBuiltin : BuiltinTool() {
         val obj = element as? JsonObject
             ?: throw IllegalArgumentException("argumentsJson must be a JSON object.")
         return NodeActionArguments(
+            snapshotId = obj["snapshot_id"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+                ?: throw IllegalArgumentException("snapshot_id must be a valid integer."),
             action = obj["action"]?.jsonPrimitive?.contentOrNull.orEmpty().trim(),
             index = obj["index"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
                 ?: throw IllegalArgumentException("index must be a valid integer."),
@@ -108,6 +115,7 @@ class NodeActionBuiltin : BuiltinTool() {
     }
 
     private data class NodeActionArguments(
+        val snapshotId: Long,
         val action: String,
         val index: Int,
         val text: String?,

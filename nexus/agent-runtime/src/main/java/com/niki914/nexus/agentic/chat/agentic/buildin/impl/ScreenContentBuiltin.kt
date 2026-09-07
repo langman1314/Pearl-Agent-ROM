@@ -33,7 +33,7 @@ class ScreenContentBuiltin : RawBuiltinTool() {
         return try {
             val result = AccessibilityController.captureScreen()
             result.fold(
-                onSuccess = { it.yaml },
+                onSuccess = { "snapshot_id: ${it.snapshotId}\n${it.yaml}" },
                 onFailure = { error ->
                     JsonObject(mapOf(
                         "error" to JsonObject(mapOf(
