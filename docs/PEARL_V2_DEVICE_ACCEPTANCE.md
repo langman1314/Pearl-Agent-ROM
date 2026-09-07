@@ -3,8 +3,8 @@
 ## 候选版本
 
 - Nexus：`1.0.1-pearl.16`，versionCode `22`
-- APK：构建完成后写入 `D:\PearlAgentBuild\releases\nexus-1.0.1-pearl.16-v22\Nexus-1.0.1-pearl.16-v22.apk`
-- APK SHA-256：构建完成后写入
+- APK：`D:\PearlAgentBuild\releases\nexus-1.0.1-pearl.16-v22\Nexus-1.0.1-pearl.16-v22.apk`
+- APK SHA-256：`ecebbe49d5acea0ed593263608a7c4df691628601016a7137d8780057f501c10`
 - 签名：APK Signature Scheme v2，单 signer，RSA-4096
 - 证书 SHA-256：`01e17b4c40f9b87973dc0c4bd05b7e36bcf2585eac64a5558e8973ed06f482d4`
 
