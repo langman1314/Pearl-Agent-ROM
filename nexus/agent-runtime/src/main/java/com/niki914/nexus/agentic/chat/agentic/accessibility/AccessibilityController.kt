@@ -539,6 +539,15 @@ object AccessibilityController {
             ?: return BuiltinToolResult.failure(
                 "NODE_NOT_FOUND", "Node $index not found in cache"
             )
+        if ((action == NodeAction.CLICK || action == NodeAction.LONG_CLICK) &&
+            SensitiveUiActionPolicy.requiresManualConfirmation(node.text, node.contentDescription)
+        ) {
+            return BuiltinToolResult.failure(
+                "SENSITIVE_ACTION_CONFIRMATION_REQUIRED",
+                "This final action may send, publish, delete, order, pay, transfer, call, or grant access. " +
+                    "Nexus may prepare the workflow, but the user must confirm this control manually.",
+            )
+        }
 
         // Fly pointer to node centre before acting
         val nodeRect = android.graphics.Rect()

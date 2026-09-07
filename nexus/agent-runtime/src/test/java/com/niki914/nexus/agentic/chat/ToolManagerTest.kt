@@ -57,14 +57,7 @@ class ToolManagerTest {
         assertEquals("Read current time.", resolved.builtinTools.single().description)
 
         assertTrue(resolved.customTools.isEmpty())
-        assertEquals(listOf("aslocate"), resolved.mcpServers.map { it.name })
-        val mcpServer = resolved.mcpServers.single()
-        val cachedTool = (mcpServer as McpServerDefinition.Http)
-            .cachedTools
-            .single()
-        assertEquals("lookupSymbol", cachedTool.name)
-        assertEquals("Lookup symbol definition", cachedTool.description)
-        assertEquals("""{"type":"object"}""", cachedTool.inputSchema.toString())
+        assertTrue(resolved.mcpServers.isEmpty())
         assertEquals(listOf("time"), resolved.allLocalToolNames())
     }
 
@@ -111,10 +104,7 @@ class ToolManagerTest {
 
         assertEquals(listOf("time"), resolved.builtinTools.map { it.name })
         assertTrue(resolved.customTools.isEmpty())
-        val mcpServer = resolved.mcpServers.single() as McpServerDefinition.Http
-        assertEquals(mapOf("Authorization" to "Bearer token"), mcpServer.headers)
-        assertEquals("lookupSymbol", mcpServer.cachedTools.single().name)
-        assertEquals("""{"type":"object"}""", mcpServer.cachedTools.single().inputSchema.toString())
+        assertTrue(resolved.mcpServers.isEmpty())
         assertEquals(listOf("time"), resolved.allLocalTools().map { it.name })
     }
 

@@ -14,6 +14,9 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 class GestureBuiltin : BuiltinTool() {
+    private companion object {
+        const val MIN_GESTURE_DISTANCE_PX = 24f
+    }
     override val name: String = "gesture"
 
     override val description: String =
@@ -71,6 +74,17 @@ class GestureBuiltin : BuiltinTool() {
             return BuiltinToolResult.failure(
                 code = "INVALID_METHOD",
                 message = "Unknown method '${args.method}'. Valid methods: accessibility, shell.",
+            )
+        }
+
+        val distanceSquared =
+            (args.endX - args.startX) * (args.endX - args.startX) +
+                (args.endY - args.startY) * (args.endY - args.startY)
+        if (distanceSquared < MIN_GESTURE_DISTANCE_PX * MIN_GESTURE_DISTANCE_PX) {
+            return BuiltinToolResult.failure(
+                code = "GESTURE_TOO_SHORT",
+                message = "gesture is only for swipe or drag; coordinate taps are not allowed.",
+                hint = "Use a snapshot-bound node_action for labeled controls.",
             )
         }
 

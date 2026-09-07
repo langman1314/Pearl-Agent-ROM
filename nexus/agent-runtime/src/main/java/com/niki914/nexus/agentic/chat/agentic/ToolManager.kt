@@ -30,10 +30,10 @@ class ToolManager(
         // User configuration remains persisted for explicit management UI, but cannot
         // expand the voice Agent's authority.
         val customRuntimeTools = emptyList<LocalTool.Custom>()
-        val mcpRuntimeServers = buildMcpServers(
-            servers = mcpServers,
-            cachedTools = mcpCachedTools,
-        )
+        // MCP discovery/cache remain available to settings and diagnostics, but MCP tools are
+        // not model-callable from the hands-free voice runtime. Async MCP/Hermes work cannot
+        // participate in the in-process phone execution mutex or the local consent boundary.
+        val mcpRuntimeServers = emptyList<McpServerDefinition>()
 
         return ResolvedTools(
             builtinTools = builtinTools,

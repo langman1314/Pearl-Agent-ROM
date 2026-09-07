@@ -13,6 +13,9 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 class KeyEventBuiltin : BuiltinTool() {
+    private companion object {
+        val VOICE_ALLOWED_NAVIGATION_KEYS = setOf(3, 4, 83, 84, 187)
+    }
     override val name: String = "key_event"
 
     override val description: String =
@@ -42,6 +45,14 @@ class KeyEventBuiltin : BuiltinTool() {
                 fieldErrors = mapOf(
                     "argumentsJson" to (throwable.message ?: "Invalid JSON object.")
                 ),
+            )
+        }
+
+        if (keyCode !in VOICE_ALLOWED_NAVIGATION_KEYS) {
+            return BuiltinToolResult.failure(
+                code = "KEY_NOT_ALLOWED",
+                message = "Voice runtime only permits non-committing navigation key events.",
+                hint = "Use snapshot-bound node_action for visible controls.",
             )
         }
 
