@@ -38,9 +38,9 @@ Prompt 中的 `Agent Memory` 来源于 `agent.main.memory` Store，其写入与�
 2. `agent-runtime/src/main/java/com/niki914/nexus/agentic/chat/agentic/ToolManager.kt` 把 builtin、custom、MCP 配置解析成 `ResolvedTools`；这里不拼 prompt。
 3. `LLMController` 先构造不含运行时 prompt 的 `ResolvedLlmConfig`，再按 provider 复用或重建 `Session`。
 4. 第一次 `applyRuntimeConfig()` 通过 `agent-runtime/src/main/java/com/niki914/nexus/agentic/chat/agentic/SessionToolBinder.kt` 先绑定 builtin、custom 和 MCP cached tools。
-5. 当存在已解析的 MCP server，且 session 首次创建或 MCP 指纹变化时，调用 `Session.refreshMcpTools()`；`agent-runtime/src/main/java/com/niki914/nexus/agentic/chat/agentic/mcp/McpDiscoveryCacheStore.kt` 再经 `RuntimeEnvironment.awaitSettingsGateway().saveDiscoveredTools()` 把发现结果写回对应的 MCP cache store。
-6. `agent-runtime/src/main/java/com/niki914/nexus/agentic/chat/agentic/PromptComposer.kt` 在拿到 `Session.getMcpDiscoverySnapshot()` 后拼接最终 prompt。当前 prompt section 只有 `Agent Memory`、`Tool Context`、`Additional instructions`；MCP 状态写进 `<mcp_servers>` 块。
-7. 第二次 `applyRuntimeConfig()` 把最终 `systemPrompt` 与同一组 `ResolvedTools` 写回 session，并更新 `runtimeState`。
+5. MCP 在线 discovery 不在当前语音问答关键路径同步执行。`scheduleMcpDiscovery()` 使用独立临时 Session 后台刷新；当前轮次立即使用持久化 cached schema。发现成功后 `McpDiscoveryCacheStore` 写回 cache，下一轮自然读取；失败不会阻塞普通回答。
+6. `agent-runtime/src/main/java/com/niki914/nexus/agentic/chat/agentic/PromptComposer.kt` 基于当前主 Session snapshot 拼接最终 prompt。
+7. 第二次 `applyRuntimeConfig()` 把最终 `systemPrompt` 与同一组安全解析后的 `ResolvedTools` 写回主 Session，并更新 `runtimeState`。
 
 `refreshFromHookContext()` 只是 `refresh()` 的别名，没有单独的 Hook 分支逻辑。
 
@@ -120,8 +120,8 @@ Prompt 中的 `Agent Memory` 来源于 `agent.main.memory` Store，其写入与�
 
 - 源码依据：`agent-runtime/src/main/java/com/niki914/nexus/agentic/chat/agentic/buildin/BuiltinToolRegistry.kt`、`agent-runtime/src/main/java/com/niki914/nexus/agentic/chat/agentic/buildin/BuiltinToolExecutor.kt`、`agent-runtime/src/main/java/com/niki914/nexus/agentic/chat/agentic/buildin/BuiltinToolSettingsManager.kt`、`agent-runtime/src/main/java/com/niki914/nexus/agentic/chat/agentic/buildin/impl/TerminalBuiltin.kt`、`agent-runtime/src/main/java/com/niki914/nexus/agentic/chat/agentic/buildin/impl/SshTerminalBuiltin.kt`。
 - 已实现：注册表、运行期开关读取、builtin 执行分发。
-- 当前默认 builtin（15 个）：`create_custom_tool`、`launch_app`、`memorize`、`notify`、`open_uri`、`read_custom_tool`、`load_skill`、`terminal`、`ssh_terminal`、`search_apps`、`screen_content`、`search_nodes`、`node_action`、`gesture`、`key_event`。
-- 边界：`terminal` 运行在 Android terminal session，不是桌面 shell；`ssh_terminal` 是交互式 SSH 终端，不支持 `exec` 或 `open_and_exec`。
+- Registry 仍包含管理 UI 可见的全部 builtin，但默认语音 Agent 的 `ToolManager` 强制排除 `terminal`、`ssh_terminal`、`create_custom_tool`、`read_custom_tool`，并不向模型暴露任意 custom command；旧配置即使标记 enabled 也不能扩大语音 Agent 权限。
+- `launch_app`、`open_uri`、`screen_content`、`search_nodes`、`node_action`、`gesture`、`key_event` 通过 `ToolCallDispatcher` 的同一互斥队列串行执行。
 - 兼容性：`app/src/main/java/com/niki914/nexus/agentic/repo/XRepo.kt` 在解析 builtin 开关时仍兼容旧 `run_command` key，但当前真实 builtin 名称已经是 `terminal`。
 
 ### Custom
