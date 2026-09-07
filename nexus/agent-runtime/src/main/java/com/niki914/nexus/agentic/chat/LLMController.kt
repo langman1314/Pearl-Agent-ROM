@@ -21,7 +21,10 @@ import com.niki914.s3ss10n.SessionConfig
 import com.niki914.s3ss10n.SessionProtocols
 import com.niki914.s3ss10n.ToolCallKind
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
@@ -31,6 +34,8 @@ import com.niki914.nexus.agentic.runtime.settings.model.RuntimeLlmConfig as LlmC
 
 object LLMController {
     private val turnMutex = Mutex()
+    private val discoveryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val discoveryMutex = Mutex()
 
     internal const val CONFIG_REQUIRED_MESSAGE = "请先填写配置"
     private val promptComposer =
@@ -73,7 +78,6 @@ object LLMController {
             finalSystemPrompt = llmConfig.prompt,
             proxy = llmConfig.proxy,
         )
-        val isNewSession = session == null || sessionApiType != apiType
         val currentMcpServersFingerprint = gateway.fingerprintMcpServers()
         val activeSession = obtainSession(apiType)
         activeSession.update {
@@ -83,26 +87,12 @@ object LLMController {
                 previousTools = previousSnapshot?.tools,
             )
         }
-        val shouldRefreshMcp = resolvedTools.mcpServers.isNotEmpty() &&
-                (isNewSession || currentMcpServersFingerprint != lastMcpServersFingerprint)
-        if (shouldRefreshMcp) {
-            var refreshSucceeded = false
-            try {
-                val refreshResult = activeSession.refreshMcpTools()
-                refreshSucceeded = refreshResult.failedServers.isEmpty()
-            } catch (throwable: Throwable) {
-                if (throwable is CancellationException) {
-                    throw throwable
-                }
-            }
-            lastMcpServersFingerprint = if (refreshSucceeded) {
-                currentMcpServersFingerprint
-            } else {
-                null
-            }
-        } else {
-            lastMcpServersFingerprint = currentMcpServersFingerprint
-        }
+        scheduleMcpDiscovery(
+            apiType = apiType,
+            config = configWithoutRuntimePrompt,
+            tools = resolvedTools,
+            fingerprint = currentMcpServersFingerprint,
+        )
 
         val mcpSnapshot = activeSession.getMcpDiscoverySnapshot()
         val prompt = promptComposer.compose(
@@ -126,6 +116,39 @@ object LLMController {
 
         return LlmRuntimeSnapshot(finalConfig, resolvedTools, prompt).also { snapshot ->
             runtimeState = RuntimeState(snapshot = snapshot, session = activeSession)
+        }
+    }
+
+    private fun scheduleMcpDiscovery(
+        apiType: LlmApiType,
+        config: ResolvedLlmConfig,
+        tools: ResolvedTools,
+        fingerprint: String,
+    ) {
+        if (tools.mcpServers.isEmpty() || fingerprint == lastMcpServersFingerprint) return
+        lastMcpServersFingerprint = fingerprint
+        discoveryScope.launch {
+            if (!discoveryMutex.tryLock()) return@launch
+            var succeeded = false
+            val discoverySession = openSession(apiType)
+            try {
+                discoverySession.update {
+                    applyRuntimeConfig(
+                        config = config,
+                        tools = tools,
+                        previousTools = null,
+                    )
+                }
+                succeeded = discoverySession.refreshMcpTools().failedServers.isEmpty()
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+            } finally {
+                discoverySession.close()
+                if (!succeeded && lastMcpServersFingerprint == fingerprint) {
+                    lastMcpServersFingerprint = null
+                }
+                discoveryMutex.unlock()
+            }
         }
     }
 
