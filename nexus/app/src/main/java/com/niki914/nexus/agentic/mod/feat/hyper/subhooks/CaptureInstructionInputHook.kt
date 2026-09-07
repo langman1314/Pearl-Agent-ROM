@@ -28,6 +28,12 @@ class CaptureInstructionInputHook(
         if (instruction.getTag<Boolean>(injectedFlagKey()) == true) return
 
         val fullName = instruction.call<String>("getFullName") ?: return
+        if (fullName == RECOGNIZE_RESULT) {
+            captureFinalAsr(instruction, param.thisObject)
+            // ASR lifecycle instructions belong to XiaoAi's microphone/VAD pipeline and
+            // must always continue, even after Nexus reserves the resulting user turn.
+            return
+        }
         if (fullName == TEMPLATE_QUERY) {
             val dialogId = resolveDialogId(instruction, param.thisObject)
             val payload = instruction.call<Any>("getPayload")
@@ -55,7 +61,22 @@ class CaptureInstructionInputHook(
         xlog("[$name] instruction_blocked fullName=$fullName")
     }
 
+    private fun captureFinalAsr(instruction: Any, target: Any?) {
+        val dialogId = resolveDialogId(instruction, target) ?: return
+        val payload = instruction.call<Any>("getPayload") ?: return
+        val query = com.niki914.nexus.agentic.mod.feat.hyper.FinalAsrPayloadDecoder.decode(payload)
+            ?: return
+        onInput(
+            AssistantCapturedInput(
+                roomId = dialogId,
+                query = query,
+                source = AssistantInputSource.FINAL_ASR,
+            )
+        )
+    }
+
     private companion object {
+        const val RECOGNIZE_RESULT = "SpeechRecognizer.RecognizeResult"
         const val TEMPLATE_QUERY = "Template.Query"
     }
 }
