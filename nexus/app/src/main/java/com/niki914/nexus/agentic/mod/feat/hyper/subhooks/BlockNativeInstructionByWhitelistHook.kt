@@ -52,6 +52,18 @@ class BlockNativeInstructionByWhitelistHook(
         }
 
         param.result = if (hookTarget?.returnType == "boolean") true else null
+        if (fullName == config.streamContainerInstructionFullName) {
+            val shape = XiaoaiStreamContainerInstruction.inspectShape(
+                instruction,
+                config.streamContainerLoadUrlMarker,
+            )
+            com.niki914.nexus.xposed.api.util.xlog(
+                "[$name] frontend_page_shape loadType=${shape?.loadType.orEmpty()} " +
+                    "paramType=${shape?.paramType.orEmpty()} urlPresent=${shape?.loadUrlPresent} " +
+                    "urlMarker=${shape?.loadUrlMatchesMarker} htmlPresent=${shape?.loadHtmlPresent} " +
+                    "cardTypePresent=${shape?.cardTypePresent} instructionsPresent=${shape?.instructionsPresent}"
+            )
+        }
         com.niki914.nexus.xposed.api.util.xlog(
             "[$name] instruction_blocked fullName=${fullName.orEmpty()}"
         )

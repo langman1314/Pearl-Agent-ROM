@@ -29,6 +29,7 @@ abstract class AbstractAssistantHook(
     ) {
         FloatScreenResetDetector(
             graceWindowMs = floatResumeGraceWindowMs,
+            shouldReset = { !ActiveTurnStore.hasActiveTurn() },
             onReset = { scope.launch { onSessionReset() } }
         ).install(
             lpparam = lpparam,

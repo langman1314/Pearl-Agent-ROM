@@ -10,6 +10,7 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage
 
 class FloatScreenResetDetector(
     private val graceWindowMs: Long = 1500L,
+    private val shouldReset: () -> Boolean = { true },
     private val onReset: () -> Unit
 ) {
     private var lastFloatResumeObservedElapsed: Long = 0
@@ -51,9 +52,11 @@ class FloatScreenResetDetector(
             val absTimeDiff = kotlin.math.abs(timeDiff)
             val isResumedAroundDetach = absTimeDiff <= graceWindowMs
 
-            if (!isResumedAroundDetach) {
+            if (!isResumedAroundDetach && shouldReset()) {
                 xlog("[FloatScreenResetDetector] reset after detach graceMs=$graceWindowMs")
                 onReset()
+            } else if (!isResumedAroundDetach) {
+                xlog("[FloatScreenResetDetector] detach reset deferred while turn active")
             } else {
                 xlog("[FloatScreenResetDetector] detach ignored due to nearby resume")
             }
