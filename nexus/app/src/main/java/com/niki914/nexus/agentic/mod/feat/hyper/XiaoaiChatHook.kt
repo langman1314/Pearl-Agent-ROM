@@ -84,7 +84,12 @@ class XiaoaiChatHook(
     }
 
     // 渲染前等待宿主 UI 卡片；超时必须 fail-open，避免 Hook 失配时挂死或吞掉原生回答。
-    override suspend fun dispatchQueryToLLM(turnId: Long, roomId: String, query: String) {
+    override suspend fun dispatchQueryToLLM(
+        turnId: Long,
+        roomId: String,
+        requestId: String,
+        query: String,
+    ) {
         if (capturedResponseDialogId != roomId || capturedResponseTarget == null) {
             targetReady.cancel()
             targetReady = CompletableDeferred()
@@ -93,7 +98,7 @@ class XiaoaiChatHook(
         val eventContext = XEvent.snapshotContext()
         XEvent.withContext(eventContext) {
             try {
-                textSource.submit(query).collect { frame ->
+                textSource.submitReserved(requestId, query).collect { frame ->
                     if (!awaitResponseTarget()) throw ResponseTargetTimeoutException()
                     renderStreamCard(turnId, roomId, frame.text, frame.isFirst, frame.isFinal)
                 }

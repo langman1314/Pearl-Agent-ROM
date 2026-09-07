@@ -6,6 +6,9 @@ import android.os.IInterface
 import android.os.Parcel
 
 interface IAgentRuntimeService : IInterface {
+    fun reserve(requestId: String?): Boolean
+    fun releaseReservation(requestId: String?)
+    fun submitReserved(requestId: String?, query: String?, callback: IRenderFrameCallback?)
     fun submit(query: String?, callback: IRenderFrameCallback?)
     fun cancel()
     fun resetConversation()
@@ -20,6 +23,31 @@ interface IAgentRuntimeService : IInterface {
 
         override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
             when (code) {
+                TRANSACTION_reserve -> {
+                    data.enforceInterface(DESCRIPTOR)
+                    val accepted = reserve(data.readString())
+                    reply?.writeNoException()
+                    reply?.writeInt(if (accepted) 1 else 0)
+                    return true
+                }
+
+                TRANSACTION_releaseReservation -> {
+                    data.enforceInterface(DESCRIPTOR)
+                    releaseReservation(data.readString())
+                    reply?.writeNoException()
+                    return true
+                }
+
+                TRANSACTION_submitReserved -> {
+                    data.enforceInterface(DESCRIPTOR)
+                    val requestId = data.readString()
+                    val query = data.readString()
+                    val callback = IRenderFrameCallback.Stub.asInterface(data.readStrongBinder())
+                    submitReserved(requestId, query, callback)
+                    reply?.writeNoException()
+                    return true
+                }
+
                 TRANSACTION_submit -> {
                     data.enforceInterface(DESCRIPTOR)
                     val query = data.readString()
@@ -61,6 +89,9 @@ interface IAgentRuntimeService : IInterface {
             private const val TRANSACTION_submit = 1
             private const val TRANSACTION_cancel = 2
             private const val TRANSACTION_resetConversation = 3
+            private const val TRANSACTION_reserve = 4
+            private const val TRANSACTION_releaseReservation = 5
+            private const val TRANSACTION_submitReserved = 6
             private const val TRANSACTION_getStoreBinder = 100
 
             fun asInterface(obj: IBinder?): IAgentRuntimeService? {
@@ -73,6 +104,55 @@ interface IAgentRuntimeService : IInterface {
 
         private class Proxy(private val remote: IBinder) : IAgentRuntimeService {
             override fun asBinder(): IBinder = remote
+
+            override fun reserve(requestId: String?): Boolean {
+                val data = Parcel.obtain()
+                val reply = Parcel.obtain()
+                try {
+                    data.writeInterfaceToken(DESCRIPTOR)
+                    data.writeString(requestId)
+                    remote.transact(TRANSACTION_reserve, data, reply, 0)
+                    reply.readException()
+                    return reply.readInt() != 0
+                } finally {
+                    reply.recycle()
+                    data.recycle()
+                }
+            }
+
+            override fun releaseReservation(requestId: String?) {
+                val data = Parcel.obtain()
+                val reply = Parcel.obtain()
+                try {
+                    data.writeInterfaceToken(DESCRIPTOR)
+                    data.writeString(requestId)
+                    remote.transact(TRANSACTION_releaseReservation, data, reply, 0)
+                    reply.readException()
+                } finally {
+                    reply.recycle()
+                    data.recycle()
+                }
+            }
+
+            override fun submitReserved(
+                requestId: String?,
+                query: String?,
+                callback: IRenderFrameCallback?,
+            ) {
+                val data = Parcel.obtain()
+                val reply = Parcel.obtain()
+                try {
+                    data.writeInterfaceToken(DESCRIPTOR)
+                    data.writeString(requestId)
+                    data.writeString(query)
+                    data.writeStrongBinder(callback?.asBinder())
+                    remote.transact(TRANSACTION_submitReserved, data, reply, 0)
+                    reply.readException()
+                } finally {
+                    reply.recycle()
+                    data.recycle()
+                }
+            }
 
             override fun submit(query: String?, callback: IRenderFrameCallback?) {
                 val data = Parcel.obtain()

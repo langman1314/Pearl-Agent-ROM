@@ -30,13 +30,13 @@ import com.niki914.nexus.store.displayNameFor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import java.util.concurrent.atomic.AtomicReference
 import com.niki914.nexus.agentic.app.R as AppR
 
 class AgentRuntimeService : Service() {
@@ -54,16 +54,17 @@ class AgentRuntimeService : Service() {
     }
 
     override fun onDestroy() {
-        activeTurn.getAndSet(null)?.job?.cancel()
+        admissionGate.clearAll()?.job?.cancel()
         scope.cancel()
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val activeTurn = AtomicReference<ActiveTurn?>(null)
+    private val admissionGate = TurnAdmissionGate<ActiveTurn>(RESERVATION_TIMEOUT_MS)
 
     private data class ActiveTurn(
+        val requestId: String,
         val callback: IRenderFrameCallback,
         val job: Job,
     )
@@ -72,6 +73,7 @@ class AgentRuntimeService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "agent_runtime"
         private const val MAX_QUERY_LENGTH = 8192
+        private const val RESERVATION_TIMEOUT_MS = 2_000L
         private const val STORE_CHANNEL_ID = "nexus_xservice_default_channel"
         private const val STORE_CHANNEL_NAME = "Nexus"
     }
@@ -115,37 +117,75 @@ class AgentRuntimeService : Service() {
             return storeStub
         }
 
-        override fun submit(query: String?, callback: IRenderFrameCallback?) {
-            val q = query ?: return
-            val cb = callback ?: return
+        override fun reserve(requestId: String?): Boolean {
+            if (!validateCaller()) return false
+            return admissionGate.reserve(requestId.orEmpty())
+        }
 
-            if (q.isBlank() || q.length > MAX_QUERY_LENGTH) {
-                sendError(
-                    cb, "Query is blank or exceeds maximum length of $MAX_QUERY_LENGTH characters",
-                )
+        override fun releaseReservation(requestId: String?) {
+            if (!validateCaller()) return
+            admissionGate.releaseReservation(requestId.orEmpty())
+        }
+
+        override fun submitReserved(
+            requestId: String?,
+            query: String?,
+            callback: IRenderFrameCallback?,
+        ) {
+            if (!validateCaller()) return
+            commitTurn(requestId.orEmpty(), query, callback, requireReservation = true)
+        }
+
+        override fun submit(query: String?, callback: IRenderFrameCallback?) {
+            if (!validateCaller()) return
+            val requestId = "legacy-${System.nanoTime()}"
+            if (!admissionGate.reserve(requestId)) {
+                callback?.let { sendError(it, "Another turn is already in progress") }
                 return
             }
+            commitTurn(requestId, query, callback, requireReservation = true)
+        }
 
+        private fun commitTurn(
+            requestId: String,
+            query: String?,
+            callback: IRenderFrameCallback?,
+            requireReservation: Boolean,
+        ) {
+            val q = query ?: return releaseInvalidReservation(requestId, requireReservation)
+            val cb = callback ?: return releaseInvalidReservation(requestId, requireReservation)
+            if (q.isBlank() || q.length > MAX_QUERY_LENGTH) {
+                releaseInvalidReservation(requestId, requireReservation)
+                sendError(cb, "Query is blank or exceeds maximum length of $MAX_QUERY_LENGTH characters")
+                return
+            }
             try {
                 cb.asBinder().linkToDeath(deathRecipient, 0)
             } catch (_: Exception) {
+                releaseInvalidReservation(requestId, requireReservation)
                 return
             }
-
-            val job = scope.launch { executeTurn(q, cb) }
-            val turn = ActiveTurn(cb, job)
-            if (!activeTurn.compareAndSet(null, turn)) {
+            lateinit var turn: ActiveTurn
+            val job = scope.launch(start = CoroutineStart.LAZY) { executeTurn(q, cb, requestId) }
+            turn = ActiveTurn(requestId, cb, job)
+            if (!admissionGate.commit(requestId, turn)) {
                 job.cancel()
                 try {
                     cb.asBinder().unlinkToDeath(deathRecipient, 0)
                 } catch (_: Exception) {
                 }
-                sendError(cb, "Another turn is already in progress")
+                sendError(cb, "Turn reservation is unavailable or expired")
+                return
             }
+            job.start()
+        }
+
+        private fun releaseInvalidReservation(requestId: String, required: Boolean) {
+            if (required) admissionGate.releaseReservation(requestId)
         }
 
         override fun cancel() {
-            val turn = activeTurn.getAndSet(null) ?: return
+            val turn = admissionGate.clearAll() ?: return
             turn.job.cancel()
             scope.launch {
                 try {
@@ -157,7 +197,7 @@ class AgentRuntimeService : Service() {
 
         override fun resetConversation() {
             scope.launch {
-                val turn = activeTurn.getAndSet(null)
+                val turn = admissionGate.clearAll()
                 turn?.job?.cancelAndJoin()
                 try {
                     LLMController.resetConversation()
@@ -313,8 +353,11 @@ class AgentRuntimeService : Service() {
         }
     }
 
-    private suspend fun executeTurn(query: String, callback: IRenderFrameCallback) {
-        val thisTurn = activeTurn.get()
+    private suspend fun executeTurn(
+        query: String,
+        callback: IRenderFrameCallback,
+        requestId: String,
+    ) {
         try {
             LLMController.stream(query, this@AgentRuntimeService).collectAsFull { frame ->
                 sendFrame(
@@ -338,7 +381,7 @@ class AgentRuntimeService : Service() {
                 callback.asBinder().unlinkToDeath(deathRecipient, 0)
             } catch (_: Exception) {
             }
-            activeTurn.compareAndSet(thisTurn, null)
+            admissionGate.clearActive(requestId)
         }
     }
 
@@ -362,7 +405,7 @@ class AgentRuntimeService : Service() {
     }
 
     private fun handleBinderDeath() {
-        val turn = activeTurn.getAndSet(null) ?: return
+        val turn = admissionGate.clearAll() ?: return
         turn.job.cancel()
         scope.launch {
             try {

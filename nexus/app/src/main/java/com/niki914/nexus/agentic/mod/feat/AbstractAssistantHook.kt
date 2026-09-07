@@ -49,9 +49,13 @@ abstract class AbstractAssistantHook(
                 query = query,
                 mode = TurnMode.InjectedLLM,
             )
+            val requestId = "${provisionalTurn.turnId}:$roomId"
+            if (!textSource.reserve(requestId)) {
+                return@installInputHooks
+            }
             ActiveTurnStore.setCurrent(provisionalTurn)
             scope.launch {
-                handleCapturedQuery(roomId, query, provisionalTurn)
+                handleCapturedQuery(roomId, query, provisionalTurn, requestId)
             }
         }
         installResponseHooks(lpparam)
@@ -63,6 +67,7 @@ abstract class AbstractAssistantHook(
         roomId: String,
         query: String,
         provisionalTurn: ConversationTurnState,
+        requestId: String,
     ) {
         val takeoverDecision = resolveTakeover(query)
         val turnMode = when (takeoverDecision.target) {
@@ -71,6 +76,7 @@ abstract class AbstractAssistantHook(
         }
         val nextTurnState = provisionalTurn.copy(mode = turnMode)
         if (ActiveTurnStore.getCurrent()?.turnId != provisionalTurn.turnId) {
+            textSource.releaseReservation(requestId)
             return
         }
         ActiveTurnStore.setCurrent(nextTurnState)
@@ -101,13 +107,15 @@ abstract class AbstractAssistantHook(
             )
 
             if (nextTurnState.mode == TurnMode.NativeTakeover) {
-                textSource.cancel()
+                textSource.releaseReservation(requestId)
+                ActiveTurnStore.clear()
                 return@withContext
             }
 
             dispatchQueryToLLM(
                 turnId = nextTurnState.turnId,
                 roomId = roomId,
+                requestId = requestId,
                 query = query
             )
         }
@@ -142,11 +150,16 @@ abstract class AbstractAssistantHook(
     )
 
     // 默认通过 textSource 提交查询并渲染；子类可覆盖以插入宿主特定的等待逻辑
-    protected open suspend fun dispatchQueryToLLM(turnId: Long, roomId: String, query: String) {
+    protected open suspend fun dispatchQueryToLLM(
+        turnId: Long,
+        roomId: String,
+        requestId: String,
+        query: String,
+    ) {
         val eventContext = XEvent.snapshotContext()
         XEvent.withContext(eventContext) {
             try {
-                textSource.submit(query).collect { frame ->
+                textSource.submitReserved(requestId, query).collect { frame ->
                     renderStreamCard(turnId, roomId, frame.text, frame.isFirst, frame.isFinal)
                 }
             } catch (e: Exception) {

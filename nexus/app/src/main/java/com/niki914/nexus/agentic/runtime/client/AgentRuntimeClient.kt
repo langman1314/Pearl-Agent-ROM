@@ -122,9 +122,32 @@ class AgentRuntimeClient(private val context: Context) : AssistantTextSource,
 
     // --- AssistantTextSource ---
 
-    override fun submit(query: String): Flow<RenderFrame> = callbackFlow {
-        val svc = service
-        if (svc == null) {
+    override fun reserve(requestId: String): Boolean {
+        val svc = service ?: return false
+        return try {
+            svc.reserve(requestId)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    override fun releaseReservation(requestId: String) {
+        try {
+            service?.releaseReservation(requestId)
+        } catch (_: Exception) {
+        }
+    }
+
+    override fun submitReserved(requestId: String, query: String): Flow<RenderFrame> =
+        submitFlow { callback -> service?.submitReserved(requestId, query, callback) }
+
+    override fun submit(query: String): Flow<RenderFrame> =
+        submitFlow { callback -> service?.submit(query, callback) }
+
+    private fun submitFlow(
+        submit: (IRenderFrameCallback) -> Unit,
+    ): Flow<RenderFrame> = callbackFlow {
+        if (service == null) {
             close(ServiceUnavailableException())
             return@callbackFlow
         }
@@ -132,14 +155,12 @@ class AgentRuntimeClient(private val context: Context) : AssistantTextSource,
             override fun onFrame(frame: RenderFrame?) {
                 if (frame != null) {
                     trySend(frame)
-                    if (frame.isFinal) {
-                        close()
-                    }
+                    if (frame.isFinal) close()
                 }
             }
         }
         try {
-            svc.submit(query, callback)
+            submit(callback)
         } catch (e: Exception) {
             close(e)
         }
