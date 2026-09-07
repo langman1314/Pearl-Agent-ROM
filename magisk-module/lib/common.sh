@@ -20,6 +20,7 @@ EXPECTED_RE_INIT_SHA256=029ead61f362489e9bb034f4c2503abee95462056541e9ad07715de3
 rootfs_runtime_is_valid() {
   tree="$1"
   deep_scan="${2:-false}"
+  expected_build_hash="${3:-$EXPECTED_BUILD_JSON_SHA256}"
   [ -x "$tree/usr/local/sbin/pearl-hermes-bridge-wrapper" ] || return 1
   [ -L "$tree/opt/pearl-agent/venv/bin/python" ] || return 1
   [ "$(readlink "$tree/opt/pearl-agent/venv/bin/python")" = python3 ] || return 1
@@ -28,7 +29,8 @@ rootfs_runtime_is_valid() {
   [ -L "$tree/usr/bin/python3" ] || return 1
   [ "$(readlink "$tree/usr/bin/python3")" = python3.11 ] || return 1
   [ -x "$tree/usr/bin/python3.11" ] || return 1
-  [ "$(sha256sum "$tree/opt/pearl-agent/BUILD.json" | awk '{print $1}')" = "$EXPECTED_BUILD_JSON_SHA256" ] || return 1
+  [ -n "$expected_build_hash" ] || return 1
+  [ "$(sha256sum "$tree/opt/pearl-agent/BUILD.json" | awk '{print $1}')" = "$expected_build_hash" ] || return 1
   [ "$(sha256sum "$tree/usr/lib/python3.11/re/__init__.py" | awk '{print $1}')" = "$EXPECTED_RE_INIT_SHA256" ] || return 1
   grep -q "$EXPECTED_HERMES_COMMIT" "$tree/opt/pearl-agent/BUILD.json" || return 1
   if [ "$deep_scan" = true ]; then

@@ -250,14 +250,20 @@ ui_print "- Atomically activating rootfs; preserving one verified rollback versi
 rm -rf "$PREVIOUS_ROOTFS"
 old_rootfs_preserved=false
 if [ -d "$ROOTFS" ]; then
-  if rootfs_runtime_is_valid "$ROOTFS"; then
+  installed_build_hash=""
+  if [ -s "$STATE_ROOT/installed-build.json" ]; then
+    installed_build_hash="$(sha256sum "$STATE_ROOT/installed-build.json" | awk '{print $1}')"
+  fi
+  if [ -n "$installed_build_hash" ] &&
+     [ "$(sha256sum "$ROOTFS/opt/pearl-agent/BUILD.json" 2>/dev/null | awk '{print $1}')" = "$installed_build_hash" ] &&
+     rootfs_runtime_is_valid "$ROOTFS" true "$installed_build_hash"; then
     mv "$ROOTFS" "$PREVIOUS_ROOTFS" || {
       rm -rf "$stage"
       abort "! Could not preserve current verified rootfs"
     }
     old_rootfs_preserved=true
   else
-    ui_print "- Existing rootfs is corrupt; excluding it from rollback"
+    ui_print "- Existing rootfs failed its installed-version integrity record; excluding it from rollback"
     rm -rf "$ROOTFS"
   fi
 fi
