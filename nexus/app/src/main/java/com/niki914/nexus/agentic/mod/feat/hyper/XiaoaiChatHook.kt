@@ -135,7 +135,7 @@ class XiaoaiChatHook(
         isFirst: Boolean,
         isFinal: Boolean
     ) {
-        if (!ActiveTurnStore.isActiveInjection(turnId)) {
+        if (!ActiveTurnStore.isActiveInjection(turnId, roomId)) {
             return
         }
 

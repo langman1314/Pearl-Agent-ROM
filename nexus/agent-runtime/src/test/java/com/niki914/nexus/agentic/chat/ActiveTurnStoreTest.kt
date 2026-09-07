@@ -45,14 +45,15 @@ class ActiveTurnStoreTest {
     }
 
     @Test
-    fun conversationTurnState_doesNotCarryRoomId() {
+    fun conversationTurnState_carriesRoomIdForSessionOwnership() {
         val state = ConversationTurnState(
             turnId = 1L,
+            roomId = "dialog-1",
             lastQuery = "hello",
             mode = TurnMode.InjectedLLM,
         )
 
-        assertFalse(state.toString().contains("roomId"))
+        assertEquals("dialog-1", state.roomId)
     }
 
     @Test
@@ -105,6 +106,10 @@ class ActiveTurnStoreTest {
         )
 
         assertTrue(ActiveTurnStore.isActiveInjection(42L))
+        assertTrue(ActiveTurnStore.isActiveInjection(42L, ""))
+        assertFalse(ActiveTurnStore.isActiveInjection(42L, "other-dialog"))
+        assertTrue(ActiveTurnStore.ownsInjectedRoom(""))
+        assertFalse(ActiveTurnStore.ownsInjectedRoom("other-dialog"))
         assertFalse(ActiveTurnStore.isActiveInjection(41L))
 
         ActiveTurnStore.setCurrent(

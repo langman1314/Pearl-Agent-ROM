@@ -4,11 +4,13 @@ import java.util.concurrent.atomic.AtomicLong
 
 data class ConversationTurnState(
     val turnId: Long = 0L,
+    val roomId: String = "",
     val lastQuery: String = "",
     val mode: TurnMode = TurnMode.InjectedLLM
 ) {
-    fun nextTurn(query: String, mode: TurnMode) = ConversationTurnState(
+    fun nextTurn(roomId: String, query: String, mode: TurnMode) = ConversationTurnState(
         turnId = TurnIdGenerator.next(),
+        roomId = roomId,
         lastQuery = query,
         mode = mode
     )

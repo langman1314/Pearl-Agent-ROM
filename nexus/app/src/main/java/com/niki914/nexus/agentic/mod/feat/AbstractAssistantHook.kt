@@ -45,6 +45,7 @@ abstract class AbstractAssistantHook(
             // coroutine has time to read settings; without this provisional state the
             // native command races past the response blockers.
             val provisionalTurn = ConversationTurnState().nextTurn(
+                roomId = roomId,
                 query = query,
                 mode = TurnMode.InjectedLLM,
             )

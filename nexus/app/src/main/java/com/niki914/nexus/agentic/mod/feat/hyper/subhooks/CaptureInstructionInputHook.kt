@@ -1,7 +1,6 @@
 package com.niki914.nexus.agentic.mod.feat.hyper.subhooks
 
 import com.niki914.nexus.agentic.chat.ActiveTurnStore
-import com.niki914.nexus.agentic.chat.TurnMode
 import com.niki914.nexus.agentic.mod.feat.HookTarget
 import com.niki914.nexus.agentic.mod.feat.SubHook
 import com.niki914.nexus.agentic.mod.feat.hyper.XiaoaiConfigProvider
@@ -40,7 +39,8 @@ class CaptureInstructionInputHook(
             return
         }
 
-        if (ActiveTurnStore.getCurrent()?.mode != TurnMode.InjectedLLM) return
+        val dialogId = resolveDialogId(instruction, param.thisObject) ?: return
+        if (!ActiveTurnStore.ownsInjectedRoom(dialogId)) return
         if (fullName in XiaoaiConfigProvider.BlockNativeInstructionWhitelist.allowedInstructionFullNames) return
 
         param.result = true
