@@ -53,12 +53,13 @@ enum class InteractionMethod { ACCESSIBILITY, SHELL }
 data class ScreenSnapshot(val snapshotId: Long, val yaml: String, val nodeCount: Int)
 
 object AccessibilityController {
+    private const val SNAPSHOT_TTL_MS = 10_000L
 
     private var serviceInstance: IAccessibility? = null
     private val nodeCache = ConcurrentHashMap<Int, AccessibilityNodeInfo>()
     private val snapshotIds = AtomicLong(System.currentTimeMillis())
     @Volatile
-    private var activeSnapshotId: Long? = null
+    private var activeSnapshot: SnapshotIdentity? = null
 
     /** Set by the app module before any screen-interaction calls. */
     @Volatile
@@ -77,7 +78,7 @@ object AccessibilityController {
         pointerShown = false
         pointerOverlay?.hide()
         nodeCache.clear()
-        activeSnapshotId = null
+        activeSnapshot = null
     }
 
     private data class ScreenContext(
@@ -85,6 +86,16 @@ object AccessibilityController {
         val widthPixels: Int,
         val heightPixels: Int,
         val appPackage: String,
+        val windowId: Int,
+        val rotation: Int,
+    )
+
+    private data class SnapshotIdentity(
+        val id: Long,
+        val appPackage: String,
+        val windowId: Int,
+        val rotation: Int,
+        val capturedAtMs: Long,
     )
 
     private data class ShellResult(
@@ -102,7 +113,7 @@ object AccessibilityController {
     fun clearService() {
         serviceInstance = null
         nodeCache.clear()
-        activeSnapshotId = null
+        activeSnapshot = null
     }
 
     fun clearPointerOverlay() {
@@ -299,7 +310,7 @@ object AccessibilityController {
             )
         }
 
-        val snapshotId = publishSnapshot()
+        val snapshotId = publishSnapshot(ctx)
         return Result.success(ScreenSnapshot(snapshotId, yaml, nodeCache.size))
     }
 
@@ -323,10 +334,11 @@ object AccessibilityController {
         val ctx = ContextProvider.await()
         val dm = ctx.resources.displayMetrics
         val appPkg = root.packageName?.toString() ?: "unknown"
+        val rotation = ctx.display?.rotation ?: 0
 
         rebuildCache(root)
 
-        return ScreenContext(root, dm.widthPixels, dm.heightPixels, appPkg)
+        return ScreenContext(root, dm.widthPixels, dm.heightPixels, appPkg, root.windowId, rotation)
     }
 
     /**
@@ -373,16 +385,15 @@ object AccessibilityController {
 
         // Always refresh the cache so search runs against the current screen,
         // not a previous screen_content call.
-        try {
+        val screenContext = try {
             refreshNodeCache()
         } catch (e: Exception) {
             return Result.failure(e)
         }
 
-        val snapshotId = publishSnapshot()
-        val ctx = ContextProvider.await()
-        val screenW = ctx.resources.displayMetrics.widthPixels
-        val screenH = ctx.resources.displayMetrics.heightPixels
+        val snapshotId = publishSnapshot(screenContext)
+        val screenW = screenContext.widthPixels
+        val screenH = screenContext.heightPixels
 
         val lowerKw = keywords.map { it.lowercase() }
 
@@ -418,11 +429,17 @@ object AccessibilityController {
         return Result.success(sb.toString())
     }
 
-    private fun publishSnapshot(): Long {
+    private fun publishSnapshot(context: ScreenContext): Long {
         val snapshotId = snapshotIds.updateAndGet { previous ->
             maxOf(previous + 1L, System.currentTimeMillis())
         }
-        activeSnapshotId = snapshotId
+        activeSnapshot = SnapshotIdentity(
+            id = snapshotId,
+            appPackage = context.appPackage,
+            windowId = context.windowId,
+            rotation = context.rotation,
+            capturedAtMs = System.currentTimeMillis(),
+        )
         return snapshotId
     }
 
@@ -491,10 +508,24 @@ object AccessibilityController {
             )
         }
 
-        if (activeSnapshotId != snapshotId) {
-            return BuiltinToolResult.failure(
-                "SNAPSHOT_STALE",
-                "Snapshot $snapshotId is no longer current. Re-read the screen before acting.",
+        val snapshot = activeSnapshot
+        if (snapshot?.id != snapshotId) {
+            return staleSnapshot(snapshotId, "it is no longer current")
+        }
+        if (System.currentTimeMillis() - snapshot.capturedAtMs > SNAPSHOT_TTL_MS) {
+            return staleSnapshot(snapshotId, "it is older than ${SNAPSHOT_TTL_MS}ms")
+        }
+        val currentRoot = serviceInstance?.windowRoot
+            ?: return staleSnapshot(snapshotId, "there is no active window")
+        val currentPackage = currentRoot.packageName?.toString() ?: "unknown"
+        val currentRotation = ContextProvider.await().display?.rotation ?: 0
+        if (currentPackage != snapshot.appPackage ||
+            currentRoot.windowId != snapshot.windowId ||
+            currentRotation != snapshot.rotation
+        ) {
+            return staleSnapshot(
+                snapshotId,
+                "package, window, or rotation changed since observation",
             )
         }
 
@@ -519,6 +550,12 @@ object AccessibilityController {
             InteractionMethod.ACCESSIBILITY -> executeAccessibilityAction(node, index, action, text)
         }
     }
+
+    private fun staleSnapshot(snapshotId: Long, reason: String): BuiltinToolResult =
+        BuiltinToolResult.failure(
+            "SNAPSHOT_STALE",
+            "Snapshot $snapshotId cannot be used because $reason. Re-read the screen before acting.",
+        )
 
     private suspend fun executeShellAction(
         node: AccessibilityNodeInfo,
