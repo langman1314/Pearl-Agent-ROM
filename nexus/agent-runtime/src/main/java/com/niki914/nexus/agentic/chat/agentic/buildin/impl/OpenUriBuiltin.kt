@@ -19,14 +19,14 @@ class OpenUriBuiltin : BuiltinTool() {
     override val name: String = "open_uri"
 
     override val description: String =
-        "Open a known-valid Android URI with ACTION_VIEW, such as https, geo, tel, mailto, or an app deep link. Do not invent or guess URI schemes."
+        "Open a known-valid http or https URL with ACTION_VIEW. Voice runtime rejects calls, messages, mail, and app deep links."
 
     override val defaultEnabled: Boolean = true
 
     override fun configure(config: LocalToolConfig) {
         config.description = description
         config.string("uri") {
-            description = "Known-valid Android URI to open. Do not invent or guess URI schemes."
+            description = "Known-valid http or https URL to open. Other schemes are rejected."
             required = true
         }
         config.rawJsonSchema(OPEN_URI_SCHEMA)
@@ -57,15 +57,15 @@ class OpenUriBuiltin : BuiltinTool() {
             )
         }
 
-        val parsed = Uri.parse(uri)
-        if (parsed.scheme.isNullOrBlank()) {
+        if (!VoiceUriSafetyPolicy.isAllowed(uri)) {
             return BuiltinToolResult.failure(
-                code = "INVALID_URI",
-                message = "URI must include a scheme.",
-                hint = "Use a URI such as https://example.com, tel:10086, mailto:name@example.com, or geo:0,0.",
+                code = "URI_SCHEME_NOT_ALLOWED",
+                message = "Voice runtime only permits ordinary http and https navigation.",
+                hint = "Calls, messages, mail, geo intents, and app deep links require a trusted dedicated tool or manual action.",
                 data = JsonObject(mapOf("uri" to JsonPrimitive(uri))),
             )
         }
+        val parsed = Uri.parse(uri)
 
         val context = ContextProvider.await().applicationContext
         val intent = Intent(Intent.ACTION_VIEW, parsed).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
