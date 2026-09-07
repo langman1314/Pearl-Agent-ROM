@@ -2,9 +2,9 @@
 
 ## 候选版本
 
-- Nexus：`1.0.1-pearl.14`，versionCode `20`
-- APK：`D:\PearlAgentBuild\releases\nexus-1.0.1-pearl.14-v20\Nexus-1.0.1-pearl.14-v20.apk`
-- APK SHA-256：`9a0c522d3fe2b229b5aea82b6406a623d0d5c81eaabaddaec31189ed896f0309`
+- Nexus：`1.0.1-pearl.15`，versionCode `21`
+- APK：构建完成后写入 `D:\PearlAgentBuild\releases\nexus-1.0.1-pearl.15-v21\Nexus-1.0.1-pearl.15-v21.apk`
+- APK SHA-256：构建完成后写入
 - 签名：APK Signature Scheme v2，单 signer，RSA-4096
 - 证书 SHA-256：`01e17b4c40f9b87973dc0c4bd05b7e36bcf2585eac64a5558e8973ed06f482d4`
 
@@ -20,7 +20,7 @@
 ## 安装与启动
 
 1. 使用 `adb install -r` 安装候选 APK；必须保持签名和应用数据。
-2. 验证设备报告 versionCode 20、versionName `1.0.1-pearl.14`。
+2. 验证设备报告 versionCode 21、versionName `1.0.1-pearl.15`。
 3. 确认 Vector/LSPosed scope 包含 `com.miui.voiceassist`，重启宿主进程或设备使 Hook 生效。
 4. 确认 Agent module、Hermes bridge 和 loopback MCP listener 健康；不得打印 bearer token。
 
@@ -49,7 +49,7 @@
 
 ## 普通回答验收
 
-- Hermes MCP discovery 不得阻塞首轮普通回答。
+- Hermes MCP discovery 不得阻塞首轮普通回答。默认语音 runtime 不暴露 MCP 工具；Hermes 不能绕过 Nexus 本地手机执行队列。
 - 模型回答必须来自 Nexus Agent；不能只看到 XiaoAi 原生 timeout card。
 - 记录首个 final ASR、模型请求、首字和 final 的时间。
 - 连续 10 轮无永久 loading、无跨 dialog 文本、无下一轮被旧 owner 阻断。
@@ -65,7 +65,7 @@
 5. `node_action` 使用同一 snapshot_id，过期 snapshot 必须返回 `SNAPSHOT_STALE`；
 6. 每次动作后重新观察并验证前台 package/window 与最终状态。
 
-仅有 HTTP 200、模型声称成功或 App 被启动都不算完成。发送、提交、下单等副作用结果不确定时标记 unknown，禁止自动重放。
+仅有 HTTP 200、模型声称成功或 App 被启动都不算完成。显式发送、发布、删除、支付、转账、下单、拨号、授权控件必须返回 `SENSITIVE_ACTION_CONFIRMATION_REQUIRED`，由用户手动确认；副作用结果不确定时标记 unknown，禁止自动重放。
 
 ## Fail-open / 故障验收
 
