@@ -3,8 +3,8 @@
 ## 候选版本
 
 - Nexus：`1.0.1-pearl.15`，versionCode `21`
-- APK：构建完成后写入 `D:\PearlAgentBuild\releases\nexus-1.0.1-pearl.15-v21\Nexus-1.0.1-pearl.15-v21.apk`
-- APK SHA-256：构建完成后写入
+- APK：`D:\PearlAgentBuild\releases\nexus-1.0.1-pearl.15-v21\Nexus-1.0.1-pearl.15-v21.apk`
+- APK SHA-256：`be375e91f4e7fd3c434222ae548074d85db2ecba3adb424d027cb51d90b99dd1`
 - 签名：APK Signature Scheme v2，单 signer，RSA-4096
 - 证书 SHA-256：`01e17b4c40f9b87973dc0c4bd05b7e36bcf2585eac64a5558e8973ed06f482d4`
 
