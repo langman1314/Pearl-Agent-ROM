@@ -1,5 +1,7 @@
 package com.niki914.nexus.agentic.mod.feat.oppo.subhooks
 
+import com.niki914.nexus.agentic.mod.feat.AssistantCapturedInput
+import com.niki914.nexus.agentic.mod.feat.AssistantInputSource
 import com.niki914.nexus.agentic.mod.feat.HookTarget
 import com.niki914.nexus.agentic.mod.feat.SubHook
 import com.niki914.nexus.agentic.mod.feat.oppo.BreenoConfigProvider
@@ -9,16 +11,8 @@ import de.robv.android.xposed.XC_MethodHook
 /** 从宿主输入链路捕获用户 query 与 roomId，含去重逻辑，回调至 handleCapturedQuery。 */
 class CaptureInputHook(
     private val onDataCenterInstanceResolved: (Any) -> Unit,
-    private val onInput: (roomId: String, query: String) -> Unit
+    private val onInput: (AssistantCapturedInput) -> Unit
 ) : SubHook() {
-
-    private val duplicateLock = Any()
-    private var lastDeliveredInput: CapturedInput? = null
-
-    private data class CapturedInput(
-        val roomId: String,
-        val query: String
-    )
 
     override val hookTarget: HookTarget?
         get() = BreenoConfigProvider.CaptureInput.hookTarget
@@ -41,19 +35,14 @@ class CaptureInputHook(
             return
         }
 
-        if (query.isNullOrBlank() || shouldSuppress(roomId, query)) return
+        if (query.isNullOrBlank()) return
 
-        onInput(roomId, query)
+        onInput(
+            AssistantCapturedInput(
+                roomId = roomId,
+                query = query,
+                source = AssistantInputSource.HOST_INPUT,
+            )
+        )
     }
-
-    private fun shouldSuppress(roomId: String, query: String): Boolean =
-        synchronized(duplicateLock) {
-            val currentInput = CapturedInput(roomId = roomId, query = query)
-            if (lastDeliveredInput == currentInput) {
-                true
-            } else {
-                lastDeliveredInput = currentInput
-                false
-            }
-        }
 }

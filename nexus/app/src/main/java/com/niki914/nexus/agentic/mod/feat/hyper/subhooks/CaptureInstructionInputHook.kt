@@ -1,6 +1,8 @@
 package com.niki914.nexus.agentic.mod.feat.hyper.subhooks
 
 import com.niki914.nexus.agentic.chat.ActiveTurnStore
+import com.niki914.nexus.agentic.mod.feat.AssistantCapturedInput
+import com.niki914.nexus.agentic.mod.feat.AssistantInputSource
 import com.niki914.nexus.agentic.mod.feat.HookTarget
 import com.niki914.nexus.agentic.mod.feat.SubHook
 import com.niki914.nexus.agentic.mod.feat.hyper.XiaoaiConfigProvider
@@ -15,7 +17,7 @@ import de.robv.android.xposed.XC_MethodHook
  * OperationManager.setQueryInfo, so the regular input hook cannot see them.
  */
 class CaptureInstructionInputHook(
-    private val onInput: (dialogId: String, query: String) -> Unit,
+    private val onInput: (AssistantCapturedInput) -> Unit,
 ) : SubHook() {
 
     override val hookTarget: HookTarget?
@@ -34,7 +36,13 @@ class CaptureInstructionInputHook(
                 // The callback establishes the provisional InjectedLLM turn synchronously.
                 // Native blocking must live in this same Xposed callback because callback
                 // ordering between two hooks on this method is not stable across runtimes.
-                onInput(dialogId, query)
+                onInput(
+                    AssistantCapturedInput(
+                        roomId = dialogId,
+                        query = query,
+                        source = AssistantInputSource.TEMPLATE_QUERY,
+                    )
+                )
             }
             return
         }

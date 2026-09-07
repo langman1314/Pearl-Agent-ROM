@@ -2,6 +2,7 @@ package com.niki914.nexus.agentic.mod.feat.hyper
 
 import com.niki914.nexus.agentic.chat.ActiveTurnStore
 import com.niki914.nexus.agentic.mod.feat.AbstractAssistantHook
+import com.niki914.nexus.agentic.mod.feat.AssistantCapturedInput
 import com.niki914.nexus.agentic.mod.feat.hyper.subhooks.CaptureInputHook
 import com.niki914.nexus.agentic.mod.feat.hyper.subhooks.CaptureInstructionInputHook
 import com.niki914.nexus.agentic.mod.feat.hyper.subhooks.CaptureResponseTargetHook
@@ -27,8 +28,7 @@ class XiaoaiChatHook(
     @Volatile
     private var capturedResponseDialogId: String? = null
     private var targetReady = CompletableDeferred<Unit>()
-    private val inputLock = Any()
-    private var lastCapturedInput: Pair<String, String>? = null
+    private val inputDeduplicator = XiaoaiInputDeduplicator()
 
     override suspend fun onSessionReset() {
         super.onSessionReset()
@@ -36,6 +36,7 @@ class XiaoaiChatHook(
         targetReady = CompletableDeferred()
         capturedResponseTarget = null
         capturedResponseDialogId = null
+        inputDeduplicator.reset()
         renderTextStreamCardHook?.reset()
     }
 
@@ -62,19 +63,10 @@ class XiaoaiChatHook(
 
     override fun installInputHooks(
         lpparam: XC_LoadPackage.LoadPackageParam,
-        onInput: (roomId: String, query: String) -> Unit
+        onInput: (AssistantCapturedInput) -> Unit
     ) {
-        val deduplicatedInput: (String, String) -> Unit = { roomId, query ->
-            val current = roomId to query
-            val shouldDeliver = synchronized(inputLock) {
-                if (lastCapturedInput == current) {
-                    false
-                } else {
-                    lastCapturedInput = current
-                    true
-                }
-            }
-            if (shouldDeliver) onInput(roomId, query)
+        val deduplicatedInput: (AssistantCapturedInput) -> Unit = { input ->
+            if (inputDeduplicator.shouldDeliver(input)) onInput(input)
         }
         CaptureInstructionInputHook(onInput = deduplicatedInput).onHook(lpparam)
         CaptureInputHook(onInput = deduplicatedInput).onHook(lpparam)

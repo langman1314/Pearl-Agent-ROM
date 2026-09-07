@@ -20,6 +20,7 @@ abstract class AbstractAssistantHook(
     protected val textSource: AssistantTextSource,
 ) : Hook {
     protected open val floatResumeGraceWindowMs: Long = 1500L
+    private val inputIdentity = AssistantInputIdentity()
 
     protected fun installFloatScreenDetachHooks(
         lpparam: XC_LoadPackage.LoadPackageParam,
@@ -39,7 +40,9 @@ abstract class AbstractAssistantHook(
     final override fun onHook(lpparam: XC_LoadPackage.LoadPackageParam) {
         onBeforeInstallHooks(lpparam)
         installSessionHooks(lpparam)
-        installInputHooks(lpparam) { roomId, query ->
+        installInputHooks(lpparam) { input ->
+            val roomId = input.roomId
+            val query = input.query
             // Establish the default Nexus takeover synchronously inside the host's input
             // before-hook. Local XiaoAi commands can emit an instruction before a
             // coroutine has time to read settings; without this provisional state the
@@ -49,7 +52,7 @@ abstract class AbstractAssistantHook(
                 query = query,
                 mode = TurnMode.InjectedLLM,
             )
-            val requestId = "${provisionalTurn.turnId}:$roomId"
+            val requestId = inputIdentity.next(input, provisionalTurn.turnId)
             if (!textSource.reserve(requestId)) {
                 return@installInputHooks
             }
@@ -158,7 +161,7 @@ abstract class AbstractAssistantHook(
 
     protected abstract fun installInputHooks(
         lpparam: XC_LoadPackage.LoadPackageParam,
-        onInput: (roomId: String, query: String) -> Unit
+        onInput: (AssistantCapturedInput) -> Unit
     )
 
     // 默认通过 textSource 提交查询并渲染；子类可覆盖以插入宿主特定的等待逻辑

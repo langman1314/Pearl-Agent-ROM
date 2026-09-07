@@ -4,6 +4,7 @@ import com.niki914.nexus.agentic.chat.ActiveTurnStore
 import com.niki914.nexus.agentic.chat.ConversationTurnState
 import com.niki914.nexus.agentic.chat.TurnMode
 import com.niki914.nexus.agentic.mod.feat.AbstractAssistantHook
+import com.niki914.nexus.agentic.mod.feat.AssistantCapturedInput
 import com.niki914.nexus.agentic.mod.feat.oppo.subhooks.BlockNativeCardHook
 import com.niki914.nexus.agentic.mod.feat.oppo.subhooks.CaptureInputHook
 import com.niki914.nexus.agentic.mod.feat.oppo.subhooks.ResetConversationSignalHook
@@ -76,7 +77,7 @@ class BreenoChatHook(
 
     override fun installInputHooks(
         lpparam: XC_LoadPackage.LoadPackageParam,
-        onInput: (roomId: String, query: String) -> Unit
+        onInput: (AssistantCapturedInput) -> Unit
     ) {
         CaptureInputHook(
             onDataCenterInstanceResolved = { instance ->
