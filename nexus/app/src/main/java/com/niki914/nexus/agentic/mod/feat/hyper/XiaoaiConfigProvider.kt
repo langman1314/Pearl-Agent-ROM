@@ -107,6 +107,10 @@ object XiaoaiConfigProvider : BaseConfigProvider() {
                 .mapNotNull { it.jsonPrimitive.contentOrNull }
                 .filter { it.isNotBlank() }
                 .toSet()
+        val streamContainerInstructionFullName: String
+            get() = getString("$P.business.stream_container_instruction_full_name")
+        val streamContainerLoadUrlMarker: String
+            get() = getString("$P.business.stream_container_load_url_marker")
     }
 
     object BlockNativeTtsPlayback {

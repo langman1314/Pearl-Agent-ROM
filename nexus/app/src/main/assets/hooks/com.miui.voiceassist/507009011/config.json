@@ -121,6 +121,8 @@
           "instruction_dialog_id_getter": "getDialogId",
           "optional_has_value_method": "isPresent",
           "optional_value_getter": "get",
+          "stream_container_instruction_full_name": "Template.FrontendPage",
+          "stream_container_load_url_marker": "stream.bundle",
           "allowed_instruction_full_names": [
             "Nlp.UpdateStreamProperties"
           ]

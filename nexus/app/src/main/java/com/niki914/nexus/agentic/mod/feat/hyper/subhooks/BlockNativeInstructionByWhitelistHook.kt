@@ -5,6 +5,7 @@ import com.niki914.nexus.agentic.chat.TurnMode
 import com.niki914.nexus.agentic.mod.feat.HookTarget
 import com.niki914.nexus.agentic.mod.feat.SubHook
 import com.niki914.nexus.agentic.mod.feat.hyper.XiaoaiConfigProvider
+import com.niki914.nexus.agentic.mod.feat.hyper.XiaoaiStreamContainerInstruction
 import com.niki914.nexus.xposed.api.xevent.XEvent
 import com.niki914.nexus.xposed.runtime.util.call
 import com.niki914.nexus.xposed.runtime.util.getTag
@@ -36,6 +37,19 @@ class BlockNativeInstructionByWhitelistHook(
         val fullName = instruction.call<String>(config.instructionFullNameGetter)
         val allowedFullNames = config.allowedInstructionFullNames
         if (fullName != null && fullName in allowedFullNames) return
+        if (
+            XiaoaiStreamContainerInstruction.isSafeContainer(
+                instruction = instruction,
+                fullName = fullName,
+                expectedFullName = config.streamContainerInstructionFullName,
+                loadUrlMarker = config.streamContainerLoadUrlMarker,
+            )
+        ) {
+            com.niki914.nexus.xposed.api.util.xlog(
+                "[$name] stream container allowed fullName=${fullName.orEmpty()}"
+            )
+            return
+        }
 
         param.result = if (hookTarget?.returnType == "boolean") true else null
         com.niki914.nexus.xposed.api.util.xlog(

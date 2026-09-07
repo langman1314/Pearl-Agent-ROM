@@ -81,8 +81,17 @@ class BundledXiaoai507012002ConfigTest {
             returnType = "void",
         )
 
-        val instructionWhitelist = actions.getValue("block_native_instruction_whitelist")
+        val instructionGateBusiness = actions.getValue("block_native_instruction_whitelist")
             .jsonObject.getValue("business").jsonObject
+        assertEquals(
+            "Template.FrontendPage",
+            instructionGateBusiness.getValue("stream_container_instruction_full_name").jsonPrimitive.content,
+        )
+        assertEquals(
+            "stream.bundle",
+            instructionGateBusiness.getValue("stream_container_load_url_marker").jsonPrimitive.content,
+        )
+        val instructionWhitelist = instructionGateBusiness
             .getValue("allowed_instruction_full_names").jsonArray
             .map { it.jsonPrimitive.content }
         assertEquals(
