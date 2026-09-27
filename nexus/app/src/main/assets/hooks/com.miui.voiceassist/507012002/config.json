@@ -206,6 +206,19 @@
           "return_type": "void"
         },
         "business": {}
+      },
+      "fixed_text_broadcast": {
+        "business": {
+          "enabled": false,
+          "speak_entry_class": "dh0.u",
+          "speak_entry_method": "speakTts",
+          "speak_entry_param_types": [
+            "java.lang.String",
+            "kz.b"
+          ],
+          "stop_entry_class": "r00.g",
+          "stop_entry_method": "stopTTS"
+        }
       }
     }
   }

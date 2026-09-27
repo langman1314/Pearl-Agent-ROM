@@ -44,12 +44,23 @@ XiaoAi 走**响应目标捕获 + Instruction 分片注入**：
 
 ### 原生阻断
 
-当前源码里实际安装的是：
+当前源码里实际安装的原生指令闸门是**内联在输入 Hook 内**的，没有独立的 Block 类：
 
-- `app/src/main/java/com/niki914/nexus/agentic/mod/feat/hyper/subhooks/BlockNativeInstructionByWhitelistHook.kt`：只在 `InjectedLLM` 模式下按白名单放行必要原生 `Instruction`，其余默认拦截。
-- `app/src/main/java/com/niki914/nexus/agentic/mod/feat/hyper/subhooks/BlockNativeTtsPlaybackHook.kt`：只在 `InjectedLLM` 模式下拦截原生 TTS 播放调用。
+- `app/src/main/java/com/niki914/nexus/agentic/mod/feat/hyper/subhooks/CaptureInstructionInputHook.kt`：同一个 `beforeHook` 既采集 `SpeechRecognizer.RecognizeResult` / `Template.Query`，又在接管轮次内拦截其余原生 `Instruction`（白名单除外）。判定逻辑抽到 `app/src/main/java/com/niki914/nexus/agentic/mod/feat/hyper/XiaoaiInstructionGate.kt`，Hook 只做反射读取与动作执行。
+- 原生 TTS 播放**不再有全局拦截 Hook**。旧版本曾安装 `BlockNativeTtsPlaybackHook` 并全局拦住原生播报，该安装点已移除，不要恢复。
+
+历史上存在过的 `BlockNativeInstructionByWhitelistHook` 与 `BlockNativeTtsPlaybackHook` 两个类**已删除**：它们没有 `onHook` 调用点，属于死代码。白名单拦截逻辑并入上面的内联闸门后，旧类不再需要。
 
 当前源码里没有单独的 `BlockNativeTextStreamHook` 或 `BlockNativeTtsStreamHook`；旧说法不再适用。
+
+### 容器指令的处理
+
+`Template.FrontendPage` 这类“流式卡片容器”目前**照常拦截**，没有放行分支：
+
+- 旧实现曾凭 `loadUrl` 命中 `stream.bundle` 子串就放行。该判据不足：宿主自己的 `TemplateReactNativeCard.identifyBundle()` 只是把这个子串当卡片分类标志，它无法证明容器内层 `instructions` 没有副作用。
+- 现在只做**脱敏诊断**：`XiaoaiStreamContainerInstruction.inspectShape(...)` 读出 loadType/paramType/URL 是否存在与是否命中标记/loadHtml 是否存在/cardType 是否存在/内层指令数量，全部以布尔量、枚举名和计数形式写入 `xlog`。日志不含 URL、HTML 与卡片正文。
+- 若将来要重新引入放行，必须先证明内层指令无副作用；当前不移植旧放行路径。
+
 
 ### 生命周期
 
@@ -62,7 +73,19 @@ XiaoAi 走**响应目标捕获 + Instruction 分片注入**：
 
 - `TurnMode.NativeTakeover` 在 `AbstractAssistantHook.handleCapturedQuery(...)` 中就会调用 `LLMController.stopCurrentRound(keepCurrentTurn = false)` 并直接返回。
 - Breeno 侧因此不会调用 `renderStreamCard(...)`，`BlockNativeCardHook` 与 `SuppressCleanupHook` 也会对当前轮次放行原生回答与原生清理逻辑。
-- XiaoAi 侧因此不会继续消费共享流；`BlockNativeInstructionByWhitelistHook` 与 `BlockNativeTtsPlaybackHook` 也会对当前轮次放行原生 `Instruction` 与 TTS。
+- XiaoAi 侧因此不会继续消费共享流；内联闸门也会因为 `ownsInjectedRoom(...)` 为 false 而对该轮次的原生 `Instruction` 全部放行，且此时没有任何 TTS 拦截逻辑参与。
+
+## 原生固定文本播报（默认关闭）
+
+`app/src/main/java/com/niki914/nexus/agentic/mod/feat/hyper/XiaoaiFixedTextBroadcast.kt` 是为“先证明原生能播报”准备的显式测试入口，**默认关闭**（`actions.fixed_text_broadcast.business.enabled = false`），且只播报编译期常量文本，不接受 Agent 动态文本、不触发手机工具。
+
+选定的发声入口是 `dh0.u.speakTts(String, kz.b)`（内部走 `r00.g.speak(...)`），停止入口是 `r00.g.stopTTS()`。
+
+为什么不注入 `SpeechSynthesizer.SpeakStream`：对已核对 sha256 的 507012002 反编译后可见，`SpeakStream` 的消费方（`cb0.db`、`pb0.s`）只是把 payload 文本累加进 `SpeakContentManager`（`com.xiaomi.voiceassistant.instruction.utils.b2`），并不启动合成或播放；真正发声要经过 `TTSPlayView.onPlayClick()` → `ea0.n1.speakTts(text)` 或等价的 `dh0.u.speakTts`。只注入 `SpeakStream` 会是一个“看着接通、其实没有声音”的占位实现。
+
+前置条件由 `app/src/main/java/com/niki914/nexus/agentic/mod/feat/hyper/XiaoaiFixedTextGate.kt` 判定：开关开启、宿主版本等于已核对版本、文本是固定常量、无在途播报、会话已绑定、目标未失效——任一不满足立即拒绝，不重试、不自动重放。
+
+**证据边界**：`fixed_text_dispatched` 日志只证明反射调用已发起，**不证明设备发出了声音**。是否有声音只能由真机听感确认。
 
 ## 关键源码
 
@@ -80,9 +103,10 @@ XiaoAi 走**响应目标捕获 + Instruction 分片注入**：
 
 - `app/src/main/java/com/niki914/nexus/agentic/mod/feat/hyper/XiaoaiChatHook.kt`
 - `app/src/main/java/com/niki914/nexus/agentic/mod/feat/hyper/XiaoaiConfigProvider.kt`
+- `app/src/main/java/com/niki914/nexus/agentic/mod/feat/hyper/XiaoaiInstructionGate.kt`
+- `app/src/main/java/com/niki914/nexus/agentic/mod/feat/hyper/XiaoaiStreamContainerInstruction.kt`
 - `app/src/main/java/com/niki914/nexus/agentic/mod/feat/hyper/XiaoaiRenderSession.kt`
-- `app/src/main/java/com/niki914/nexus/agentic/mod/feat/hyper/subhooks/BlockNativeInstructionByWhitelistHook.kt`
-- `app/src/main/java/com/niki914/nexus/agentic/mod/feat/hyper/subhooks/BlockNativeTtsPlaybackHook.kt`
 - `app/src/main/java/com/niki914/nexus/agentic/mod/feat/hyper/subhooks/CaptureInputHook.kt`
+- `app/src/main/java/com/niki914/nexus/agentic/mod/feat/hyper/subhooks/CaptureInstructionInputHook.kt`
 - `app/src/main/java/com/niki914/nexus/agentic/mod/feat/hyper/subhooks/CaptureResponseTargetHook.kt`
 - `app/src/main/java/com/niki914/nexus/agentic/mod/feat/hyper/subhooks/RenderTextStreamCardHook.kt`
