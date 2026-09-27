@@ -184,8 +184,130 @@ class ToolCallDispatcherTest {
         )
     }
 
-    private fun dangerousRules(): List<ExecutionRule> {
-        return listOf(
+    @Test
+    fun executeLocalTool_threadsCallIdIntoTheBuiltinRequest() = runTest {
+        val builtin = RecordingBuiltinTool("create_custom_tool")
+        val dispatcher = ToolCallDispatcher(
+            builtinToolExecutor = BuiltinToolExecutor(BuiltinToolRegistry(listOf(builtin))),
+            customToolExecutor = CustomToolExecutor(),
+            currentTools = {
+                ResolvedTools(
+                    builtinTools = listOf(
+                        LocalTool.Builtin(
+                            name = "create_custom_tool",
+                            description = "Create custom tool",
+                            tool = builtin,
+                        )
+                    ),
+                )
+            },
+        )
+
+        dispatcher.executeLocalTool(
+            name = "create_custom_tool",
+            argumentsJson = """{"name":"battery_status"}""",
+            callId = "call-42",
+        )
+
+        assertEquals("call-42", builtin.lastRequest?.callId)
+    }
+
+    @Test
+    fun executeLocalTool_replaysRepeatedCallIdInsteadOfActingTwice() = runTest {
+        val builtin = RecordingBuiltinTool("node_action")
+        val dispatcher = ToolCallDispatcher(
+            builtinToolExecutor = BuiltinToolExecutor(BuiltinToolRegistry(listOf(builtin))),
+            customToolExecutor = CustomToolExecutor(),
+            currentTools = {
+                ResolvedTools(
+                    builtinTools = listOf(
+                        LocalTool.Builtin(
+                            name = "node_action",
+                            description = "Node action",
+                            tool = builtin,
+                        )
+                    ),
+                )
+            },
+        )
+
+        val first = dispatcher.executeLocalTool("node_action", """{"index":1}""", callId = "call-1")
+        val second = dispatcher.executeLocalTool("node_action", """{"index":1}""", callId = "call-1")
+
+        // The phone action ran exactly once; the repeat got the recorded result back.
+        assertEquals(1, builtin.invocationCount)
+        assertEquals(first, second)
+    }
+
+    @Test
+    fun executeLocalTool_stopsFurtherSideEffectsAfterAnUnknownOutcome() = runTest {
+        val unknown = RecordingBuiltinTool(
+            name = "node_action",
+            result = BuiltinToolResult.unknown(message = "tap was sent but never confirmed"),
+        )
+        val later = RecordingBuiltinTool("gesture")
+        val dispatcher = ToolCallDispatcher(
+            builtinToolExecutor = BuiltinToolExecutor(BuiltinToolRegistry(listOf(unknown, later))),
+            customToolExecutor = CustomToolExecutor(),
+            currentTools = {
+                ResolvedTools(
+                    builtinTools = listOf(
+                        LocalTool.Builtin("node_action", "Node action", unknown),
+                        LocalTool.Builtin("gesture", "Gesture", later),
+                    ),
+                )
+            },
+        )
+
+        val firstJson = dispatcher.executeLocalTool("node_action", """{"index":1}""", callId = "call-1")
+        val secondJson = dispatcher.executeLocalTool(
+            "gesture",
+            """{"start_x":1,"start_y":2,"end_x":3,"end_y":4}""",
+            callId = "call-2",
+        )
+
+        assertEquals("unknown", jsonField(firstJson, "outcome"))
+        // The follow-up gesture was never dispatched to the phone.
+        assertEquals(0, later.invocationCount)
+        assertEquals("ACTION_STATE_INDETERMINATE", jsonField(secondJson, "code"))
+        assertEquals("failure", jsonField(secondJson, "outcome"))
+    }
+
+    @Test
+    fun executeLocalTool_beginRoundClearsTheUnknownLatch() = runTest {
+        val unknown = RecordingBuiltinTool(
+            name = "node_action",
+            result = BuiltinToolResult.unknown(message = "unconfirmed"),
+        )
+        val later = RecordingBuiltinTool("gesture")
+        val dispatcher = ToolCallDispatcher(
+            builtinToolExecutor = BuiltinToolExecutor(BuiltinToolRegistry(listOf(unknown, later))),
+            customToolExecutor = CustomToolExecutor(),
+            currentTools = {
+                ResolvedTools(
+                    builtinTools = listOf(
+                        LocalTool.Builtin("node_action", "Node action", unknown),
+                        LocalTool.Builtin("gesture", "Gesture", later),
+                    ),
+                )
+            },
+        )
+
+        dispatcher.executeLocalTool("node_action", """{"index":1}""", callId = "call-1")
+        dispatcher.beginRound()
+        dispatcher.executeLocalTool(
+            "gesture",
+            """{"start_x":1,"start_y":2,"end_x":3,"end_y":4}""",
+            callId = "call-2",
+        )
+
+        assertEquals(1, later.invocationCount)
+    }
+
+    private fun jsonField(json: String, key: String): String =
+        Json.parseToJsonElement(json).jsonObject[key]!!.jsonPrimitive.content
+
+    private fun dangerousRules(): List<ExecutionRule> {        return listOf(
             ExecutionRule(
                 id = "dangerous-command",
                 name = "危险命令",
@@ -197,14 +319,18 @@ class ToolCallDispatcherTest {
 
     private class RecordingBuiltinTool(
         override val name: String,
+        private val result: BuiltinToolResult = BuiltinToolResult.success(message = "ok"),
     ) : BuiltinTool() {
         var lastRequest: BuiltinToolRequest? = null
+        var invocationCount: Int = 0
+            private set
 
         override fun configure(config: LocalToolConfig) = Unit
 
         override suspend fun invoke(request: BuiltinToolRequest): BuiltinToolResult {
             lastRequest = request
-            return BuiltinToolResult.success(message = "ok")
+            invocationCount++
+            return result
         }
     }
 }
