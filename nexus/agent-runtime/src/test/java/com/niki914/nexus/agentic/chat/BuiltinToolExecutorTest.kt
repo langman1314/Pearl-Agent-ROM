@@ -17,6 +17,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BuiltinToolExecutorTest {
@@ -53,7 +54,7 @@ class BuiltinToolExecutorTest {
     }
 
     @Test
-    fun execute_wrapsNonCancellationExceptionAsUnknownError() = runTest {
+    fun execute_wrapsNonCancellationExceptionAsUnknownOutcome() = runTest {
         val executor = BuiltinToolExecutor(
             BuiltinToolRegistry(
                 listOf(
@@ -68,8 +69,15 @@ class BuiltinToolExecutorTest {
         val resultJson = executor.execute("broken", "{}")
 
         val json = Json.parseToJsonElement(resultJson).jsonObject
-        assertEquals("UNKNOWN_ERROR", json["code"]!!.jsonPrimitive.content)
-        assertEquals("boom", json["message"]!!.jsonPrimitive.content)
+        // A tool that threw may already have acted, so the outcome is unconfirmed rather than a
+        // clean failure the caller is free to retry.
+        assertEquals("ACTION_OUTCOME_UNKNOWN", json["code"]!!.jsonPrimitive.content)
+        assertEquals("unknown", json["outcome"]!!.jsonPrimitive.content)
+        assertEquals("false", json["ok"]!!.jsonPrimitive.content)
+        assertTrue(json["message"]!!.jsonPrimitive.content.contains("boom"))
+        val hint = json["hint"]!!.jsonPrimitive.content
+        assertTrue(hint, hint.contains("screen_content"))
+        assertTrue(hint, hint.contains(BuiltinToolResult.OUTCOME_UNKNOWN_HINT))
     }
 
     @Test

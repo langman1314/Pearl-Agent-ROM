@@ -19,6 +19,7 @@ import com.niki914.nexus.agentic.chat.agentic.accessibility.AccessibilityControl
 import com.niki914.nexus.agentic.chat.agentic.accessibility.AccessibilityController.refreshNodeCache
 import com.niki914.nexus.agentic.chat.agentic.accessibility.AccessibilityController.serviceInstance
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolResult
+import com.niki914.nexus.agentic.chat.agentic.buildin.ToolOutcome
 import com.niki914.nexus.agentic.chat.agentic.shell.TerminalCommandOutcome
 import com.niki914.nexus.agentic.chat.agentic.shell.TerminalOpenOutcome
 import com.niki914.nexus.agentic.chat.agentic.shell.TerminalSessionPool
@@ -71,14 +72,58 @@ object AccessibilityController {
     private var shellIdentity: ShellIdentity = ShellIdentity.NONE
     private var accessibilitySettingsOpened: Boolean = false
 
+    /**
+     * Description of the first action this round whose effect could not be confirmed.
+     *
+     * Once set, no further side-effecting action is dispatched until the round ends. Read-only
+     * re-observation ([captureScreen], [searchNodes]) stays available so the agent can find out
+     * what actually happened.
+     */
+    private val indeterminateActions = IndeterminateActionTracker()
+
     private enum class ShellIdentity { ROOT, SHIZUKU, USER, NONE }
 
-    /** Reset pointer state and hide overlay at end of an agent turn. */
+    /**
+     * Reset pointer state, hide the overlay, and clear round-scoped action state at end of an
+     * agent turn.
+     *
+     * Clearing the indeterminate-action latch here is what makes the guard round-scoped: a new user
+     * turn starts from a clean slate, while everything inside one turn stays latched.
+     */
     fun onTurnEnd() {
         pointerShown = false
         pointerOverlay?.hide()
         nodeCache.clear()
         activeSnapshot = null
+        indeterminateActions.reset()
+    }
+
+    /** True when a previous action this round ended with an outcome Nexus could not confirm. */
+    val hasIndeterminateAction: Boolean get() = indeterminateActions.isLatched
+
+    /**
+     * Refuses a side-effecting action while the round is latched.
+     *
+     * This is a plain failure, not [ToolOutcome.UNKNOWN]: nothing was dispatched, so the caller
+     * may safely re-observe and decide again.
+     */
+    private fun indeterminateBlocked(tool: String): BuiltinToolResult? =
+        indeterminateActions.refusal(tool)
+
+    /**
+     * Turns a failed shell result into a failure or an unknown outcome, and latches the round when
+     * the command may already have executed.
+     */
+    private fun shellActionFailure(
+        code: String,
+        action: String,
+        result: ShellResult,
+    ): BuiltinToolResult {
+        val outcome = ShellActionClassifier.classifyFailure(code, action, result)
+        if (outcome.outcome == ToolOutcome.UNKNOWN) {
+            indeterminateActions.record("$action: ${result.stderr}")
+        }
+        return outcome
     }
 
     private data class ScreenContext(
@@ -97,14 +142,6 @@ object AccessibilityController {
         val rotation: Int,
         val capturedAtMs: Long,
     )
-
-    private data class ShellResult(
-        val exitCode: Int,
-        val stdout: String,
-        val stderr: String,
-    ) {
-        val success: Boolean get() = exitCode == 0
-    }
 
     fun setService(service: IAccessibility) {
         serviceInstance = service
@@ -539,24 +576,31 @@ object AccessibilityController {
             ?: return BuiltinToolResult.failure(
                 "NODE_NOT_FOUND", "Node $index not found in cache"
             )
-        if ((action == NodeAction.CLICK || action == NodeAction.LONG_CLICK) &&
-            SensitiveUiActionPolicy.requiresManualConfirmation(node.text, node.contentDescription)
-        ) {
-            return BuiltinToolResult.failure(
-                "SENSITIVE_ACTION_CONFIRMATION_REQUIRED",
-                "This final action may send, publish, delete, order, pay, transfer, call, or grant access. " +
-                    "Nexus may prepare the workflow, but the user must confirm this control manually.",
-            )
-        }
+        // Final-effect controls are never tapped by the agent; the user confirms them manually.
+        SensitiveUiActionPolicy.clickGate(action, node.text, node.contentDescription)
+            ?.let { return it }
+
+        // Nothing may be dispatched while an earlier action this round is still unconfirmed.
+        indeterminateBlocked("node_action")?.let { return it }
 
         // Fly pointer to node centre before acting
         val nodeRect = android.graphics.Rect()
         node.getBoundsInScreen(nodeRect)
         pointerOverlay?.animateTo(nodeRect.centerX().toFloat(), nodeRect.centerY().toFloat())
 
-        return when (method) {
-            InteractionMethod.SHELL -> executeShellAction(node, index, action)
-            InteractionMethod.ACCESSIBILITY -> executeAccessibilityAction(node, index, action, text)
+        return try {
+            when (method) {
+                InteractionMethod.SHELL -> executeShellAction(node, index, action)
+                InteractionMethod.ACCESSIBILITY -> executeAccessibilityAction(node, index, action, text)
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // The round was cancelled while this action was in flight. Cancellation still
+            // propagates, but the action may have reached the phone, so the round is latched and
+            // nothing further is dispatched.
+            indeterminateActions.record(
+                "node_action ${action.name} on node $index was cancelled while being dispatched"
+            )
+            throw e
         }
     }
 
@@ -621,10 +665,8 @@ object AccessibilityController {
                     runShellCommand("input tap $newCx $newCy")
                 }
                 if (!result.success) {
-                    return BuiltinToolResult.failure(
-                        "SHELL_FAILED",
-                        "Shell ${if (action == NodeAction.LONG_CLICK) "long tap" else "tap"} failed: ${result.stderr}",
-                    )
+                    val name = if (action == NodeAction.LONG_CLICK) "Shell long tap" else "Shell tap"
+                    return shellActionFailure("SHELL_FAILED", name, result)
                 }
                 val name = if (action == NodeAction.LONG_CLICK) "long tap" else "tap"
                 BuiltinToolResult.success("shell $name at ($newCx, $newCy)")
@@ -633,8 +675,8 @@ object AccessibilityController {
             NodeAction.SCROLL_FORWARD -> {
                 val result = runShellCommand("input swipe $cx $cy $cx ${cy - 200} 300")
                 if (!result.success) {
-                    return BuiltinToolResult.failure(
-                        "SHELL_FAILED", "Shell scroll forward failed: ${result.stderr}"
+                    return shellActionFailure(
+                        "SHELL_FAILED", "Shell scroll forward", result
                     )
                 }
                 BuiltinToolResult.success("shell scroll forward at ($cx, $cy)")
@@ -643,8 +685,8 @@ object AccessibilityController {
             NodeAction.SCROLL_BACKWARD -> {
                 val result = runShellCommand("input swipe $cx $cy $cx ${cy + 200} 300")
                 if (!result.success) {
-                    return BuiltinToolResult.failure(
-                        "SHELL_FAILED", "Shell scroll backward failed: ${result.stderr}"
+                    return shellActionFailure(
+                        "SHELL_FAILED", "Shell scroll backward", result
                     )
                 }
                 BuiltinToolResult.success("shell scroll backward at ($cx, $cy)")
@@ -716,26 +758,38 @@ object AccessibilityController {
         // Fly pointer along the swipe path before executing
         pointerOverlay?.showSwipe(startX, startY, endX, endY, duration)
 
-        return when (method) {
-            InteractionMethod.ACCESSIBILITY -> {
-                val success =
-                    serviceInstance?.dispatchGesture(startX, startY, endX, endY, duration) ?: false
-                if (success) {
-                    BuiltinToolResult.success("gesture performed via accessibility")
-                } else {
-                    BuiltinToolResult.failure("GESTURE_FAILED", "gesture failed via accessibility")
-                }
-            }
+        // Nothing may be dispatched while an earlier action this round is still unconfirmed.
+        indeterminateBlocked("gesture")?.let { return it }
 
-            InteractionMethod.SHELL -> {
-                val result = runShellCommand("input swipe $startX $startY $endX $endY $duration")
-                if (!result.success) {
-                    return BuiltinToolResult.failure(
-                        "SHELL_FAILED", "Shell gesture failed: ${result.stderr}"
-                    )
+        return try {
+            when (method) {
+                InteractionMethod.ACCESSIBILITY -> {
+                    val success =
+                        serviceInstance?.dispatchGesture(startX, startY, endX, endY, duration)
+                            ?: false
+                    if (success) {
+                        BuiltinToolResult.success("gesture performed via accessibility")
+                    } else {
+                        BuiltinToolResult.failure(
+                            "GESTURE_FAILED", "gesture failed via accessibility"
+                        )
+                    }
                 }
-                BuiltinToolResult.success("gesture performed via shell")
+
+                InteractionMethod.SHELL -> {
+                    val result =
+                        runShellCommand("input swipe $startX $startY $endX $endY $duration")
+                    if (!result.success) {
+                        return shellActionFailure("SHELL_FAILED", "Shell gesture", result)
+                    }
+                    BuiltinToolResult.success("gesture performed via shell")
+                }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            indeterminateActions.record(
+                "gesture ($startX,$startY -> $endX,$endY) was cancelled in flight"
+            )
+            throw e
         }
     }
 
@@ -757,6 +811,10 @@ object AccessibilityController {
                 "SERVICE_UNAVAILABLE", e.message ?: "Service unavailable"
             )
         }
+
+        // Nothing may be dispatched while an earlier action this round is still unconfirmed.
+        indeterminateBlocked("key_event")?.let { return it }
+
         val actionId = when (keyCode) {
             4 -> GLOBAL_ACTION_BACK
             3 -> GLOBAL_ACTION_HOME
@@ -766,33 +824,37 @@ object AccessibilityController {
             else -> null
         }
 
-        if (actionId != null) {
-            val success =
-                (serviceInstance as? AccessibilityService)?.performGlobalAction(actionId) ?: false
-            val actionName = when (keyCode) {
-                4 -> "BACK"
-                3 -> "HOME"
-                187 -> "APP_SWITCH"
-                83 -> "NOTIFICATION"
-                84 -> "QUICK_SETTINGS"
-                else -> "UNKNOWN"
+        try {
+            if (actionId != null) {
+                val success =
+                    (serviceInstance as? AccessibilityService)?.performGlobalAction(actionId)
+                        ?: false
+                val actionName = when (keyCode) {
+                    4 -> "BACK"
+                    3 -> "HOME"
+                    187 -> "APP_SWITCH"
+                    83 -> "NOTIFICATION"
+                    84 -> "QUICK_SETTINGS"
+                    else -> "UNKNOWN"
+                }
+                return if (success) {
+                    BuiltinToolResult.success("KEYCODE_$actionName performed")
+                } else {
+                    BuiltinToolResult.failure(
+                        "KEY_EVENT_FAILED", "$actionName action failed"
+                    )
+                }
             }
-            return if (success) {
-                BuiltinToolResult.success("KEYCODE_$actionName performed")
-            } else {
-                BuiltinToolResult.failure(
-                    "KEY_EVENT_FAILED", "${actionName} action failed"
-                )
-            }
-        }
 
-        val result = runShellCommand("input keyevent $keyCode")
-        if (!result.success) {
-            return BuiltinToolResult.failure(
-                "SHELL_FAILED", "Shell keyevent $keyCode failed: ${result.stderr}"
-            )
+            val result = runShellCommand("input keyevent $keyCode")
+            if (!result.success) {
+                return shellActionFailure("SHELL_FAILED", "Shell keyevent $keyCode", result)
+            }
+            return BuiltinToolResult.success("shell keyevent $keyCode performed")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            indeterminateActions.record("key_event $keyCode was cancelled in flight")
+            throw e
         }
-        return BuiltinToolResult.success("shell keyevent $keyCode performed")
     }
 
     private suspend fun runShellCommand(command: String): ShellResult {
@@ -811,10 +873,12 @@ object AccessibilityController {
                 )
             }
             is TerminalCommandOutcome.Timeout -> {
+                // The command was already handed to the shell, so it may well have run.
                 ShellResult(
                     -1,
                     outcome.result.stdout.toByteArray().decodeToString().trim(),
                     "Command timed out",
+                    mayHaveTakenEffect = true,
                 )
             }
             is TerminalCommandOutcome.Failure -> {
@@ -823,13 +887,19 @@ object AccessibilityController {
             }
             is TerminalCommandOutcome.SessionNotFound -> {
                 resetShellSession()
-                ShellResult(-1, "", "Shell session lost")
+                // The command had been submitted before the session vanished: it may have executed.
+                ShellResult(-1, "", "Shell session lost", mayHaveTakenEffect = true)
             }
             is TerminalCommandOutcome.Busy -> {
                 ShellResult(-1, "", "Shell session busy")
             }
             is TerminalCommandOutcome.UnexpectedError -> {
-                ShellResult(-1, "", outcome.throwable.message ?: "Unexpected shell error")
+                ShellResult(
+                    -1,
+                    "",
+                    outcome.throwable.message ?: "Unexpected shell error",
+                    mayHaveTakenEffect = true,
+                )
             }
         }
     }

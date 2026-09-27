@@ -208,6 +208,8 @@ object LLMController {
             var streamErrorReported = false
             val sink: SendChannel<LlmStreamEvent> = this
             try {
+                // A new round starts with no duplicate-suppression or unknown-outcome state.
+                toolCallDispatcher.beginRound()
                 XEvent.llmRoundStarted(
                     fields = mapOf(
                         "queryLength" to query.length,
@@ -300,6 +302,7 @@ object LLMController {
                             toolCallDispatcher.executeLocalTool(
                                 name = name,
                                 argumentsJson = argumentsJson,
+                                callId = id,
                             )
                         )
                     }
