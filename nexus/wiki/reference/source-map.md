@@ -34,10 +34,13 @@
 - `feat/oppo/subhooks/SuppressCleanupHook.kt`: 阻止清理逻辑
 - `feat/hyper/XiaoaiChatHook.kt`: XiaoAi 业务 Hook 入口
 - `feat/hyper/XiaoaiConfigProvider.kt`: XiaoAi 配置提供者
+- `feat/hyper/XiaoaiInstructionGate.kt`: 原生指令闸门判定（纯逻辑，可单测）
+- `feat/hyper/XiaoaiStreamContainerInstruction.kt`: 容器指令脱敏 shape 诊断
+- `feat/hyper/XiaoaiFixedTextGate.kt`: 固定文本播报前置条件判定（纯逻辑，可单测）
+- `feat/hyper/XiaoaiFixedTextBroadcast.kt`: 原生固定文本播报适配器（默认关闭）
 - `feat/hyper/XiaoaiRenderSession.kt`: XiaoAi 渲染会话
-- `feat/hyper/subhooks/BlockNativeInstructionByWhitelistHook.kt`: 指令白名单拦截
-- `feat/hyper/subhooks/BlockNativeTtsPlaybackHook.kt`: 原生 TTS 拦截
 - `feat/hyper/subhooks/CaptureInputHook.kt`: 捕获输入
+- `feat/hyper/subhooks/CaptureInstructionInputHook.kt`: 捕获最终 ASR/Query，并内联原生指令闸门
 - `feat/hyper/subhooks/CaptureResponseTargetHook.kt`: 捕获响应目标
 - `feat/hyper/subhooks/EXT.kt`: Hyper 子 Hook 扩展
 - `feat/hyper/subhooks/RenderTextStreamCardHook.kt`: 文本流卡片渲染
