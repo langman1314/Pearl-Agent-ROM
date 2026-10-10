@@ -36,6 +36,10 @@ class XiaoaiResponseTargetRegistry(
         }
     }
 
+    fun hasLiveTarget(dialogId: String): Boolean = synchronized(lock) {
+        currentTargetLocked(dialogId) != null
+    }
+
     fun clear(dialogId: String) {
         val pending = synchronized(lock) {
             targets.remove(dialogId)

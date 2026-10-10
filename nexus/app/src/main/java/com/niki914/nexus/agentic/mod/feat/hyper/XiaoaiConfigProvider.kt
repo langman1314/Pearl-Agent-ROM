@@ -164,4 +164,25 @@ object XiaoaiConfigProvider : BaseConfigProvider() {
         val hookTarget: HookTarget?
             get() = parseHookTarget("actions.render_tts.target")
     }
+
+    /**
+     * 原生固定文本播报适配器参数。入口类/方法与停止入口都来自已核对 sha256 的实际 APK，
+     * 不是猜的构造参数；[enabled] 默认 false，只有显式测试入口才开启。
+     */
+    object FixedTextBroadcast {
+        private const val P = "actions.fixed_text_broadcast"
+        val enabled: Boolean
+            get() = getBoolean("$P.business.enabled")
+        val speakEntryClass: String
+            get() = getString("$P.business.speak_entry_class")
+        val speakEntryMethod: String
+            get() = getString("$P.business.speak_entry_method")
+        val speakEntryParamTypes: List<String>
+            get() = getList("$P.business.speak_entry_param_types")
+                .mapNotNull { it.jsonPrimitive.contentOrNull }
+        val stopEntryClass: String
+            get() = getString("$P.business.stop_entry_class")
+        val stopEntryMethod: String
+            get() = getString("$P.business.stop_entry_method")
+    }
 }

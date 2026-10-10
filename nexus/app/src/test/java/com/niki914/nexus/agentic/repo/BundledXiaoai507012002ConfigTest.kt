@@ -8,15 +8,13 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BundledXiaoai507012002ConfigTest {
     @Test
     fun exactStableConfig_matchesAuditedDexTargets() {
-        val file = sequenceOf(
-            File("src/main/assets/hooks/com.miui.voiceassist/507012002/config.json"),
-            File("app/src/main/assets/hooks/com.miui.voiceassist/507012002/config.json"),
-        ).firstOrNull(File::isFile) ?: error("bundled XiaoAi 507012002 config missing")
+        val file = configFile()
 
         val root = Json.parseToJsonElement(file.readText()).jsonObject
         assertEquals("com.miui.voiceassist", root.getValue("package_name").jsonPrimitive.content)
@@ -105,6 +103,39 @@ class BundledXiaoai507012002ConfigTest {
         assertFalse("Application.Operate" in instructionWhitelist)
         assertFalse(file.readText().contains("cb0.eb"))
     }
+
+    @Test
+    fun fixedTextBroadcastIsDefaultOffAndPinnedToVerifiedEntry() {
+        val actions = configFile().let {
+            Json.parseToJsonElement(it.readText()).jsonObject
+        }.getValue("config").jsonObject.getValue("actions").jsonObject
+        val business = actions.getValue("fixed_text_broadcast").jsonObject.getValue("business").jsonObject
+        assertFalse(
+            "固定文本播报必须默认关闭",
+            business.getValue("enabled").jsonPrimitive.boolean,
+        )
+        assertEquals("dh0.u", business.getValue("speak_entry_class").jsonPrimitive.content)
+        assertEquals("speakTts", business.getValue("speak_entry_method").jsonPrimitive.content)
+        assertEquals(
+            listOf("java.lang.String", "kz.b"),
+            business.getValue("speak_entry_param_types").jsonArray.map { it.jsonPrimitive.content },
+        )
+        assertEquals("r00.g", business.getValue("stop_entry_class").jsonPrimitive.content)
+        assertEquals("stopTTS", business.getValue("stop_entry_method").jsonPrimitive.content)
+    }
+
+    @Test
+    fun fixedTextBroadcastEntryDoesNotReuseTheCardDispatcher() {
+        // 播报入口不得复用卡片分发器 cb0.db：那条路径只累加文本、不会发声。
+        val text = configFile().readText()
+        assertTrue(text.contains("dh0.u"))
+        assertFalse(text.contains("\"speak_entry_class\": \"cb0.db\""))
+    }
+
+    private fun configFile(): File = sequenceOf(
+        File("src/main/assets/hooks/com.miui.voiceassist/507012002/config.json"),
+        File("app/src/main/assets/hooks/com.miui.voiceassist/507012002/config.json"),
+    ).firstOrNull(File::isFile) ?: error("bundled XiaoAi 507012002 config missing")
 
     private fun assertTarget(
         actions: kotlinx.serialization.json.JsonObject,
