@@ -1,5 +1,7 @@
 package com.niki914.nexus.agentic.chat.agentic.stream
 
+import com.niki914.nexus.agentic.chat.agentic.PayloadReading
+import com.niki914.nexus.agentic.chat.agentic.ResultContract
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolResult
 import com.niki914.nexus.agentic.chat.agentic.buildin.ToolOutcome
 import kotlinx.serialization.json.Json
@@ -95,10 +97,27 @@ object LocalToolResultClassifier {
             return LocalToolResultStatus.Failed(result.nonZeroExitMessage(exitCode))
         }
 
+        // Consistent with the guard: a payload whose completion credential is present but unusable
+        // (a quoted, fractional or object-valued exit_code, closed=false) claims a completion it
+        // cannot prove, and an in-flight receipt has not finished. Neither may read as a success.
+        when (ResultContract.readObject(result)) {
+            is PayloadReading.Completed -> Unit
+            PayloadReading.InFlight -> return LocalToolResultStatus.Unconfirmed(
+                result.statusMessage()
+                    ?: "The operation was accepted but has not finished, so its result is unconfirmed."
+            )
+            PayloadReading.InvalidCredential -> return LocalToolResultStatus.Unconfirmed(
+                result.statusMessage()
+                    ?: "Tool returned an unusable completion credential, so its result is unconfirmed."
+            )
+            PayloadReading.Malformed,
+            PayloadReading.Opaque,
+            -> Unit
+        }
+
         // An object with no field at all says nothing about what happened, so it cannot confirm a
         // success. Objects that do carry tool-specific fields keep their previous reading: the raw
-        // terminal and observation shapes are data, not verdicts, and failing them would break
-        // observation.
+        // observation shapes are data, not verdicts, and failing them would break observation.
         if (result.isEmpty()) return emptyResult()
 
         return LocalToolResultStatus.Success

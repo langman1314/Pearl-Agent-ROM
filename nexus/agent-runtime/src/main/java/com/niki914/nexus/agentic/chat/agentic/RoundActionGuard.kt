@@ -2,9 +2,6 @@ package com.niki914.nexus.agentic.chat.agentic
 
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolResult
 import com.niki914.nexus.agentic.chat.agentic.buildin.ToolOutcome
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Tracks side-effecting tool calls inside a single agent round.
@@ -143,8 +140,13 @@ class RoundActionGuard {
     ): String = synchronized(lock) {
         val readOnly = toolName in READ_ONLY_TOOLS
         val decoded = BuiltinToolResult.fromJsonString(resultJson)
-        val unreadableSideEffect =
-            !readOnly && decoded == null && !claimsReadableCompletion(resultJson)
+        // A tool exit that proves nothing about a side effect (empty, truncated, accepted-but-not-
+        // finished, malformed, or a payload whose completion credential is missing or invalid) is
+        // undecided. The shared contract answers this, so the guard and the classifier cannot drift
+        // apart on what counts as finished.
+        val unreadableSideEffect = !readOnly &&
+            decoded == null &&
+            !ResultContract.legacyPayloadIsDecided(resultJson)
         val outcome = when {
             decoded != null -> decoded.outcome
             unreadableSideEffect -> ToolOutcome.UNKNOWN
@@ -176,7 +178,10 @@ class RoundActionGuard {
             toolName = toolName,
             argumentsJson = argumentsJson,
             outcome = outcome,
-            resultJson = resultJson,
+            // The canonical result, not the raw payload: a replay of this call id must hand back
+            // exactly what the first call returned, so the first return and the replay cannot
+            // disagree about what the tool proved.
+            resultJson = reported,
         )
         if (readOnly) {
             // An observation ends the id-less replay window: whatever the agent does next is a new
@@ -201,24 +206,6 @@ class RoundActionGuard {
         } else {
             resultJson
         }
-    }
-
-    /**
-     * Does a non-envelope payload read as a *finished* call rather than an unknown one?
-     *
-     * This is deliberately a small allow-list, not "any non-empty JSON or text": a payload only
-     * counts when it carries something only a completed call could report. An async receipt
-     * (`accepted` / `async_id`) proves the work was *accepted*, not that it finished — it does not
-     * claim success, but it is a readable handoff, so it neither latches nor is rewritten. A
-     * refusal that happened before anything ran (`COMMAND_BLOCKED`, `SESSION_NOT_FOUND`, ...) is
-     * readable too: the caller may retry it with a fresh call id.
-     */
-    private fun claimsReadableCompletion(resultJson: String): Boolean {
-        val obj = runCatching { Json.parseToJsonElement(resultJson) as? JsonObject }.getOrNull()
-            ?: return false
-        val errorCode = ((obj["error"] as? JsonObject)?.get("code") as? JsonPrimitive)?.content
-        if (!errorCode.isNullOrBlank()) return errorCode.uppercase() in PRE_DISPATCH_REFUSAL_CODES
-        return RAW_COMPLETION_KEYS.any { obj.containsKey(it) }
     }
 
     /**
@@ -296,37 +283,5 @@ class RoundActionGuard {
          * re-observing is how the agent recovers.
          */
         val READ_ONLY_TOOLS = setOf("screen_content", "search_nodes")
-
-        /**
-         * Keys that only a *finished* non-envelope call reports.
-         *
-         * `exit_code` / `stdout` / `stderr` / `elapsed_seconds` are a terminal command completion;
-         * `session` / `identity` a session handle; `closed` a closed session; `snapshot_id` an
-         * observation snapshot. `accepted` and `async_id` are intentionally *absent*: an accepted
-         * receipt proves the work started, not that it finished, so it stays readable without being
-         * treated as a claim of success.
-         */
-        private val RAW_COMPLETION_KEYS = setOf(
-            "exit_code",
-            "stdout",
-            "stderr",
-            "elapsed_seconds",
-            "session",
-            "identity",
-            "closed",
-            "snapshot_id",
-        )
-
-        /**
-         * Error codes for a refusal that happened *before* anything was dispatched. Nothing reached
-         * the device, so the call is an ordinary retryable failure, not an indeterminate one.
-         */
-        private val PRE_DISPATCH_REFUSAL_CODES = setOf(
-            "COMMAND_BLOCKED",
-            "INVALID_REQUEST",
-            "SESSION_NOT_FOUND",
-            "ASYNC_NOT_FOUND",
-            "SESSION_BUSY",
-        )
     }
 }

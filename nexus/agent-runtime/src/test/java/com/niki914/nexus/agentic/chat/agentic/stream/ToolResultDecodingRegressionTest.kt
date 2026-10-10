@@ -120,12 +120,11 @@ class ToolResultDecodingRegressionTest {
             // Custom tool success and the memorize/read_custom_tool envelopes.
             """{"ok":true,"command":"printf sample_model","stdout":"sample_model"}""",
             """{"ok":true}""",
-            // Terminal: open, exec, interactive write/read, async accept and close.
+            // Terminal: open, exec, interactive write/read and close.
             """{"session":"s1","identity":"local"}""",
             """{"exit_code":0,"stdout":"/","stderr":""}""",
             """{"accepted":true,"bytes_written":3,"sequence":4,"replayed":false}""",
             """{"stdout":"","stderr":"","mode":"delta","sequence":3,"truncated":false}""",
-            """{"async_id":"a1","accepted":true,"elapsed_seconds":1}""",
             """{"closed":true}""",
             // Raw observation payloads and unstructured error strings keep their old handling.
             "snapshot_id: 42\nroot:\n  - {i: 0, t: button}",
@@ -135,6 +134,25 @@ class ToolResultDecodingRegressionTest {
                 "'$payload' must stay readable",
                 LocalToolResultStatus.Success,
                 LocalToolResultClassifier.status(payload),
+            )
+        }
+    }
+
+    @Test
+    fun asyncReceiptsAreUnconfirmedRatherThanSuccessful() {
+        // Contract change, previously asserted as readable/successful here.
+        // Old assertion: `{"async_id":"a1","accepted":true,"elapsed_seconds":1}` was part of
+        // `verdictLessToolPayloadsKeepTheirReading` and expected `Success`.
+        // New assertion: an accepted receipt and a running poll are `Unconfirmed`, because the work
+        // has not finished. Basis: acceptance and partial output prove the command started, not that
+        // it completed, so treating them as success would hide an in-flight operation.
+        listOf(
+            """{"async_id":"a1","accepted":true,"elapsed_seconds":1}""",
+            """{"stdout_partial":"so far","stderr_partial":"","elapsed_seconds":5}""",
+        ).forEach { payload ->
+            assertTrue(
+                "'$payload' is in flight and must not read as success",
+                LocalToolResultClassifier.status(payload) is LocalToolResultStatus.Unconfirmed,
             )
         }
     }

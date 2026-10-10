@@ -576,31 +576,35 @@ object AccessibilityController {
             ?: return BuiltinToolResult.failure(
                 "NODE_NOT_FOUND", "Node $index not found in cache"
             )
-        // Final-effect controls are never tapped by the agent; the user confirms them manually.
-        SensitiveUiActionPolicy.clickGate(action, node.text, node.contentDescription)
-            ?.let { return it }
 
-        // Nothing may be dispatched while an earlier action this round is still unconfirmed.
-        indeterminateBlocked("node_action")?.let { return it }
+        // Production gate → dispatch boundary: the sensitive-label gate and the indeterminate
+        // barrier are both checked here, before any dispatch step can run.
+        return NodeActionDispatchGate.run(
+            action = action,
+            text = node.text,
+            contentDescription = node.contentDescription,
+            indeterminateRefusal = { indeterminateBlocked("node_action") },
+        ) {
+            // Fly pointer to node centre before acting
+            val nodeRect = android.graphics.Rect()
+            node.getBoundsInScreen(nodeRect)
+            pointerOverlay?.animateTo(nodeRect.centerX().toFloat(), nodeRect.centerY().toFloat())
 
-        // Fly pointer to node centre before acting
-        val nodeRect = android.graphics.Rect()
-        node.getBoundsInScreen(nodeRect)
-        pointerOverlay?.animateTo(nodeRect.centerX().toFloat(), nodeRect.centerY().toFloat())
-
-        return try {
-            when (method) {
-                InteractionMethod.SHELL -> executeShellAction(node, index, action)
-                InteractionMethod.ACCESSIBILITY -> executeAccessibilityAction(node, index, action, text)
+            try {
+                when (method) {
+                    InteractionMethod.SHELL -> executeShellAction(node, index, action)
+                    InteractionMethod.ACCESSIBILITY ->
+                        executeAccessibilityAction(node, index, action, text)
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // The round was cancelled while this action was in flight. Cancellation still
+                // propagates, but the action may have reached the phone, so the round is latched and
+                // nothing further is dispatched.
+                indeterminateActions.record(
+                    "node_action ${action.name} on node $index was cancelled while being dispatched"
+                )
+                throw e
             }
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            // The round was cancelled while this action was in flight. Cancellation still
-            // propagates, but the action may have reached the phone, so the round is latched and
-            // nothing further is dispatched.
-            indeterminateActions.record(
-                "node_action ${action.name} on node $index was cancelled while being dispatched"
-            )
-            throw e
         }
     }
 

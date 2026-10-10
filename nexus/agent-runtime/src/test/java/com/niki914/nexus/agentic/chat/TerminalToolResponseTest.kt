@@ -90,12 +90,33 @@ class TerminalToolResponseTest {
 
     @Test
     fun asyncRunningUsesPartialFieldsWithoutExitCode() {
+        // Contract change: a running poll is not a completion. The partial output is preserved as
+        // diagnostics inside a canonical unknown envelope instead of being returned as a raw
+        // success-shaped payload. Old assertion: top-level `stdout_partial`/`stderr_partial`/
+        // `elapsed_seconds` with no verdict. New assertion: unknown, ok=false, and the partial
+        // output still readable under `data`. Basis: only a real completion may read as success, and
+        // partial output cannot prove the command finished.
         val json = parse(TerminalToolResponse.asyncRunning("stdout so far", "stderr so far", 5L))
 
         assertFalse(json.containsKey("exit_code"))
-        assertEquals("stdout so far", json["stdout_partial"]!!.jsonPrimitive.content)
-        assertEquals("stderr so far", json["stderr_partial"]!!.jsonPrimitive.content)
-        assertEquals("5", json["elapsed_seconds"]!!.jsonPrimitive.content)
+        assertEquals("unknown", json["outcome"]!!.jsonPrimitive.content)
+        assertEquals("false", json["ok"]!!.jsonPrimitive.content)
+        val data = json["data"]!!.jsonObject
+        assertEquals("stdout so far", data["stdout_partial"]!!.jsonPrimitive.content)
+        assertEquals("stderr so far", data["stderr_partial"]!!.jsonPrimitive.content)
+        assertEquals("5", data["elapsed_seconds"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun asyncAcceptedIsUnconfirmedAndKeepsItsReceipt() {
+        // Contract change: acceptance proves the command started, not that it finished.
+        val json = parse(TerminalToolResponse.asyncAccepted(asyncId = "a1", elapsedSeconds = 1L))
+
+        assertEquals("unknown", json["outcome"]!!.jsonPrimitive.content)
+        assertEquals("false", json["ok"]!!.jsonPrimitive.content)
+        val data = json["data"]!!.jsonObject
+        assertEquals("a1", data["async_id"]!!.jsonPrimitive.content)
+        assertEquals("true", data["accepted"]!!.jsonPrimitive.content)
     }
 
     @Test
