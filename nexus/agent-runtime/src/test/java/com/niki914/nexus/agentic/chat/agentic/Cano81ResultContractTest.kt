@@ -11,8 +11,13 @@ import com.niki914.nexus.agentic.chat.agentic.shell.ShellCommandPolicyDecision
 import com.niki914.nexus.agentic.chat.agentic.shell.TerminalToolResponse
 import com.niki914.nexus.agentic.chat.agentic.stream.LocalToolResultClassifier
 import com.niki914.nexus.agentic.chat.agentic.stream.LocalToolResultStatus
+import com.niki914.libterm.TerminalBytes
+import com.niki914.libterm.runtime.CommandResult
 import com.niki914.s3ss10n.LocalToolConfig
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -169,10 +174,135 @@ class Cano81ResultContractTest {
         )
     }
 
+    // Each opaque payload gets its own test, so one failure cannot hide the rest of them.
+    @Test
+    fun plainTextPayloadBlocksALaterAction() = assertOpaqueBlocks("pending")
+
+    @Test
+    fun emptyObjectPayloadBlocksALaterAction() = assertOpaqueBlocks("{}")
+
+    @Test
+    fun unknownKeyObjectPayloadBlocksALaterAction() = assertOpaqueBlocks("""{"pending":true}""")
+
+    @Test
+    fun bareAcceptedPayloadBlocksALaterAction() = assertOpaqueBlocks("""{"accepted":true}""")
+
+    @Test
+    fun nullSessionPayloadBlocksALaterAction() = assertOpaqueBlocks("""{"session":null}""")
+
+    /**
+     * A verdict-less payload from a side-effecting tool is dispatched once, reported as `unknown`
+     * with `ok=false`, replayed verbatim, and blocks the next side effect.
+     *
+     * The first return has to be the canonical envelope here: these payloads are readable enough to
+     * parse, so returning them verbatim would tell the caller the action was accounted for.
+     */
+    private fun assertOpaqueBlocks(payload: String) {
+        val action = CountingTool("terminal", payload)
+        val later = CountingTool("gesture", BuiltinToolResult.success("done").toJsonString())
+        val guard = RoundActionGuard()
+        val executor = BuiltinToolExecutor(BuiltinToolRegistry(listOf(action, later)))
+
+        val first = guardedDispatch(executor, guard, "terminal", "call-1")
+        assertEquals("'$payload' must report ok=false", "false", jsonField(first, "ok"))
+        assertEquals("'$payload' must report outcome=unknown", "unknown", jsonField(first, "outcome"))
+
+        val replay = guardedDispatch(executor, guard, "terminal", "call-1")
+        assertEquals("'$payload' replay must equal the first return", first, replay)
+        assertEquals("'$payload' was dispatched exactly once", 1, action.invocations)
+
+        guardedDispatch(executor, guard, "gesture", "call-2")
+        assertEquals("'$payload' must block the later side effect", 0, later.invocations)
+    }
+
+    /**
+     * The real terminal failure factories that had already dispatched, each checked on its own.
+     *
+     * They are the same code path the phone takes: `Timeout` and `INTERNAL_ERROR` are produced by the
+     * production factory functions, not hand-written JSON. Their `error` object is read before their
+     * session handle, so a timeout that carries a session cannot be mistaken for an opened session.
+     */
+    @Test
+    fun timeoutWithSessionBlocksALaterAction() = assertFactoryBlocks(
+        TerminalToolResponse.commandTimeout(
+            result = timeoutResult(),
+            elapsedSeconds = 1L,
+            timeoutMs = 1_000L,
+            session = "user",
+        )
+    )
+
+    @Test
+    fun timeoutWithoutSessionBlocksALaterAction() = assertFactoryBlocks(
+        TerminalToolResponse.commandTimeout(
+            result = timeoutResult(),
+            elapsedSeconds = 1L,
+            timeoutMs = 1_000L,
+        )
+    )
+
+    @Test
+    fun internalErrorBlocksALaterAction() =
+        assertFactoryBlocks(TerminalToolResponse.internalError(IllegalStateException("failed")))
+
+    @Test
+    fun blockedCommandIsRefusedBeforeDispatchAndStaysRetryable() {
+        val payload = TerminalToolResponse.policyBlocked(
+            ShellCommandPolicyDecision(
+                allowed = false,
+                code = "BLOCKED",
+                reason = "Command blocked by test policy.",
+            )
+        )
+        val action = CountingTool("terminal", payload)
+        val guard = RoundActionGuard()
+        val executor = BuiltinToolExecutor(BuiltinToolRegistry(listOf(action)))
+
+        val first = guardedDispatch(executor, guard, "terminal", "call-1")
+        assertTrue(
+            "'$payload' was refused before dispatch, so it is a plain failure",
+            LocalToolResultClassifier.status(first) is LocalToolResultStatus.Failed,
+        )
+        assertFalse("a pre-dispatch refusal must not latch the round", guard.isLatched)
+        assertEquals("nothing reached the device", 1, action.invocations)
+    }
+
+    private fun timeoutResult() = CommandResult(
+        command = "cmd",
+        stdout = TerminalBytes.of(byteArrayOf()),
+        stderr = TerminalBytes.of(byteArrayOf()),
+        exitCode = null,
+        timedOut = true,
+    )
+
+    /** A dispatched-but-unconfirmed factory payload: reported unknown, replayed, and it blocks. */
+    private fun assertFactoryBlocks(payload: String) {
+        val action = CountingTool("terminal", payload)
+        val later = CountingTool("gesture", BuiltinToolResult.success("done").toJsonString())
+        val guard = RoundActionGuard()
+        val executor = BuiltinToolExecutor(BuiltinToolRegistry(listOf(action, later)))
+
+        val first = guardedDispatch(executor, guard, "terminal", "call-1")
+        assertEquals("must report ok=false", "false", jsonField(first, "ok"))
+        assertEquals("must report outcome=unknown", "unknown", jsonField(first, "outcome"))
+        assertTrue(
+            "must read as unconfirmed for the UI",
+            LocalToolResultClassifier.status(first) is LocalToolResultStatus.Unconfirmed,
+        )
+        assertEquals(
+            "replay must equal the first return",
+            first,
+            guardedDispatch(executor, guard, "terminal", "call-1"),
+        )
+        assertEquals("dispatched exactly once", 1, action.invocations)
+
+        guardedDispatch(executor, guard, "gesture", "call-2")
+        assertEquals("must block the later side effect", 0, later.invocations)
+    }
+
     // Added counterexamples: an exit code that is not a valid integer, and closed=false.
     @Test
-    fun invalidExitCodeTypesNeverConfirmCompletion() {
-        listOf(
+    fun invalidExitCodeTypesNeverConfirmCompletion() {        listOf(
             """{"exit_code":null,"stdout":"out","stderr":""}""",
             """{"exit_code":"0","stdout":"out","stderr":""}""",
             """{"exit_code":{},"stdout":"out","stderr":""}""",
@@ -208,6 +338,46 @@ class Cano81ResultContractTest {
                 }
                 guard.afterCall("terminal", arguments, callId, raw)
             }
+        }
+    }
+
+    /** The same real dispatch path for a named tool, so one test can drive two different tools. */
+    private fun guardedDispatch(
+        executor: BuiltinToolExecutor,
+        guard: RoundActionGuard,
+        toolName: String,
+        callId: String,
+    ): String {
+        return when (val decision = guard.beforeCall(toolName, arguments, callId)) {
+            is RoundActionGuard.Decision.Replay -> decision.resultJson
+            is RoundActionGuard.Decision.Refused -> decision.resultJson
+            RoundActionGuard.Decision.Proceed -> {
+                val raw = runBlocking {
+                    executor.execute(name = toolName, argumentsJson = arguments, callId = callId)
+                }
+                guard.afterCall(toolName, arguments, callId, raw)
+            }
+        }
+    }
+
+    private fun jsonField(json: String, key: String): String {
+        return Json.parseToJsonElement(json).jsonObject[key]?.jsonPrimitive?.content.orEmpty()
+    }
+
+    /** A raw-json tool under any name, counting how often it was really invoked. */
+    private class CountingTool(override val name: String, private val payload: String) :
+        BuiltinTool(), RawJsonBuiltinTool {
+        var invocations: Int = 0
+            private set
+
+        override fun configure(config: LocalToolConfig) = Unit
+
+        override suspend fun invoke(request: BuiltinToolRequest): BuiltinToolResult =
+            BuiltinToolResult.success("unused")
+
+        override suspend fun invokeRawJson(request: BuiltinToolRequest): String {
+            invocations++
+            return payload
         }
     }
 

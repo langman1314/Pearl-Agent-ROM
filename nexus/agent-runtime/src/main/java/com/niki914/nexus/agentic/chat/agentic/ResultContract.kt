@@ -12,6 +12,20 @@ sealed interface PayloadReading {
     /** The tool proved the operation reached a verdict. [failed] tells which one. */
     data class Completed(val failed: Boolean, val exitCode: Int? = null) : PayloadReading
 
+    /**
+     * The tool proved it refused the call *before* dispatching anything: a blocked command, an
+     * unknown session, a busy session, an invalid request, an async result that was not found.
+     * Nothing reached the phone, so this is a decided failure the caller may retry.
+     */
+    data object Refused : PayloadReading
+
+    /**
+     * The call had already been dispatched when it lost its verdict — a timeout, an internal error,
+     * a terminated runtime, a broken channel. The action may have landed, so this proves nothing
+     * about the outcome and must never be reported as a plain retryable failure.
+     */
+    data object Indeterminate : PayloadReading
+
     /** The work was accepted or is still running: it has not finished, so it proves nothing yet. */
     data object InFlight : PayloadReading
 
@@ -26,8 +40,9 @@ sealed interface PayloadReading {
 
     /**
      * A well-formed payload with no completion credential either way — a plain observation, an
-     * opaque tool body, or a legacy error string. It stays readable: refusing it would break
-     * observation, and it claims no completion.
+     * opaque tool body, or a legacy error string. It is *readable*, and it claims nothing. For a
+     * read-only tool that is enough; for a side effect it proves nothing, so callers must not treat
+     * it as a finished action.
      */
     data object Opaque : PayloadReading
 }
@@ -44,8 +59,14 @@ sealed interface PayloadReading {
  * - a synchronous terminal result is a completion only when `exit_code` is a valid integer; `0` and
  *   non-zero are explicit success and failure, and a process exiting proves nothing about the
  *   phone-side goal;
- * - an async receipt (`accepted` / `async_id`) or a running poll (`stdout_partial`) is in flight,
- *   even when it carries `elapsed_seconds`;
+ * - a structured `error` is read *first*, because a timeout payload also carries a session handle
+ *   and partial output: losing its verdict to a `session` key would report an unconfirmed action as
+ *   a finished one;
+ * - an async receipt (`async_id`) or a running poll (`stdout_partial`) is in flight, even when it
+ *   carries `elapsed_seconds`; a bare `accepted` proves only that the request was taken, so it is
+ *   readable but undecided. An interactive write receipt that reports the bytes it wrote did finish
+ *   that write;
+ * - a null or blank session/identity handle is not a session;
  * - `closed=false` is not a completed close.
  */
 object ResultContract {
@@ -62,9 +83,19 @@ object ResultContract {
     }
 
     fun readObject(obj: JsonObject): PayloadReading {
+        // A structured error is a verdict about the call itself, so it is read before anything else.
+        // It is also the only way to tell a dispatched-but-unconfirmed timeout from a call that was
+        // refused outright: both carry `error`, and only the code separates them.
+        obj.errorCode()?.let { code ->
+            return if (code in POST_DISPATCH_INDETERMINATE_CODES) {
+                PayloadReading.Indeterminate
+            } else {
+                PayloadReading.Refused
+            }
+        }
+
         // In flight: the work was handed off as async, or is being polled while it still produces
-        // output. `elapsed_seconds` does not turn either into a completion. An interactive write
-        // receipt (`accepted` + `bytes_written`) is *not* in flight: it reports work already done.
+        // output. `elapsed_seconds` does not turn either into a completion.
         if (obj.containsKey("stdout_partial") || obj.containsKey("stderr_partial")) {
             return PayloadReading.InFlight
         }
@@ -86,30 +117,49 @@ object ResultContract {
             }
         }
 
-        // Opening a session and observing the screen are completions in their own right.
-        if (obj.containsKey("session") || obj.containsKey("identity")) {
+        // An interactive write receipt proves the write it reports: the byte count is the evidence,
+        // so a bare `accepted` without it is deliberately *not* covered here.
+        if (obj.containsKey("bytes_written")) {
+            return if (obj.integerField("bytes_written") != null) {
+                PayloadReading.Completed(failed = false)
+            } else {
+                PayloadReading.InvalidCredential
+            }
+        }
+
+        // Opening a session and observing the screen are completions in their own right — but only
+        // with a usable handle: `{"session":null}` is the absence of a session, not a session.
+        if (obj.hasUsableHandle("session") || obj.hasUsableHandle("identity")) {
             return PayloadReading.Completed(failed = false)
         }
-        if (obj.containsKey("snapshot_id")) return PayloadReading.Completed(failed = false)
+        if (obj.hasUsableHandle("snapshot_id")) return PayloadReading.Completed(failed = false)
 
         return PayloadReading.Opaque
     }
 
     /**
-     * True when a non-envelope payload is a *finished* call that the guard may keep verbatim as the
-     * canonical result — a proven completion, or an opaque readable body such as observation YAML.
-     *
-     * In-flight, unusable-credential and malformed payloads all fail this, because they prove
-     * nothing about an operation that may already have reached the phone.
+     * True when a payload is a *decided* call: a proven completion, or a proven pre-dispatch
+     * refusal. Only these may be handed back verbatim — anything else, including a readable but
+     * verdict-less body, leaves a side effect unaccounted for.
      */
-    fun legacyPayloadIsDecided(resultJson: String?): Boolean = when (read(resultJson)) {
-        is PayloadReading.Completed -> true
-        PayloadReading.Opaque -> true
+    fun provesDecided(resultJson: String?): Boolean = when (read(resultJson)) {
+        is PayloadReading.Completed, PayloadReading.Refused -> true
+        PayloadReading.Indeterminate,
         PayloadReading.InFlight,
         PayloadReading.InvalidCredential,
         PayloadReading.Malformed,
+        PayloadReading.Opaque,
         -> false
     }
+
+    private fun JsonObject.errorCode(): String? =
+        ((this["error"] as? JsonObject)?.get("code") as? JsonPrimitive)
+            ?.contentOrNull
+            ?.takeIf { it.isNotBlank() }
+            ?.uppercase()
+
+    private fun JsonObject.hasUsableHandle(key: String): Boolean =
+        ((this[key] as? JsonPrimitive)?.contentOrNull)?.isNotBlank() == true
 
     private fun JsonObject.integerField(key: String): Int? {
         val primitive = this[key] as? JsonPrimitive ?: return null
@@ -121,7 +171,15 @@ object ResultContract {
     private fun JsonObject.booleanField(key: String): Boolean? =
         (this[key] as? JsonPrimitive)?.booleanOrNull
 
-    @Suppress("unused")
-    private fun JsonObject.stringField(key: String): String? =
-        (this[key] as? JsonPrimitive)?.contentOrNull
+    /**
+     * Error codes that mean the call had already been handed to the device when it lost its verdict.
+     * Everything else — a blocked command, a missing session, an invalid request — was refused
+     * before dispatch. Shared with the classifier so the two cannot disagree.
+     */
+    val POST_DISPATCH_INDETERMINATE_CODES = setOf(
+        "TIMEOUT",
+        "INTERNAL_ERROR",
+        "RUNTIME_TERMINATED",
+        "SSH_CHANNEL_FAILED",
+    )
 }

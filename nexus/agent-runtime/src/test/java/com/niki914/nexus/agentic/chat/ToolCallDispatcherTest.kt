@@ -475,7 +475,14 @@ class ToolCallDispatcherTest {
                 callId = "call-2",
             )
 
-            assertEquals("'$payload' must be reported as unconfirmed", payload, resultJson)
+            // Contract change, previously asserted as `assertEquals(payload, resultJson)` — i.e. the
+            // raw text was handed back verbatim even when it said `ok=true` next to
+            // `outcome=unknown`. New assertion: the *first* return is the canonical envelope, so a
+            // caller reading `ok` cannot be told the action succeeded. Basis: an explicit or derived
+            // unknown must be externally `ok=false/outcome=unknown`; normalising only the decoded
+            // object while still returning the contradictory raw string leaves the caller misled.
+            assertEquals("false", jsonField(resultJson, "ok"))
+            assertEquals("unknown", jsonField(resultJson, "outcome"))
             assertEquals("'$payload' must stop further side effects", 0, later.invocationCount)
             assertEquals("ACTION_STATE_INDETERMINATE", jsonField(refusalJson, "code"))
         }

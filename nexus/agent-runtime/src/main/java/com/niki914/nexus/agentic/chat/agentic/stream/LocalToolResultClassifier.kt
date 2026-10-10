@@ -65,7 +65,7 @@ object LocalToolResultClassifier {
         val errorCode = (result["error"] as? JsonObject)
             ?.let { (it["code"] as? JsonPrimitive)?.contentOrNull }
             ?.uppercase()
-        if (errorCode != null && errorCode in POST_DISPATCH_INDETERMINATE_CODES) {
+        if (errorCode != null && errorCode in ResultContract.POST_DISPATCH_INDETERMINATE_CODES) {
             return LocalToolResultStatus.Unconfirmed(
                 result.structuredErrorMessage()
                     ?: "The tool did not confirm whether its action took effect."
@@ -101,7 +101,11 @@ object LocalToolResultClassifier {
         // (a quoted, fractional or object-valued exit_code, closed=false) claims a completion it
         // cannot prove, and an in-flight receipt has not finished. Neither may read as a success.
         when (ResultContract.readObject(result)) {
-            is PayloadReading.Completed -> Unit
+            is PayloadReading.Completed, PayloadReading.Refused -> Unit
+            PayloadReading.Indeterminate -> return LocalToolResultStatus.Unconfirmed(
+                result.structuredErrorMessage()
+                    ?: "The tool did not confirm whether its action took effect."
+            )
             PayloadReading.InFlight -> return LocalToolResultStatus.Unconfirmed(
                 result.statusMessage()
                     ?: "The operation was accepted but has not finished, so its result is unconfirmed."
@@ -188,16 +192,4 @@ object LocalToolResultClassifier {
                 (this[key] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
             }
     }
-
-    /**
-     * Error codes that mean the command had already been handed to the device when it failed, so
-     * its effect is unknown rather than absent. Anything else — a blocked command, a missing
-     * session, an invalid request — was refused before dispatch and stays retryable.
-     */
-    private val POST_DISPATCH_INDETERMINATE_CODES = setOf(
-        "TIMEOUT",
-        "INTERNAL_ERROR",
-        "RUNTIME_TERMINATED",
-        "SSH_CHANNEL_FAILED",
-    )
 }

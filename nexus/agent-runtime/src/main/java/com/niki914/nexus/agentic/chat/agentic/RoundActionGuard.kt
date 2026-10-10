@@ -140,29 +140,42 @@ class RoundActionGuard {
     ): String = synchronized(lock) {
         val readOnly = toolName in READ_ONLY_TOOLS
         val decoded = BuiltinToolResult.fromJsonString(resultJson)
-        // A tool exit that proves nothing about a side effect (empty, truncated, accepted-but-not-
-        // finished, malformed, or a payload whose completion credential is missing or invalid) is
-        // undecided. The shared contract answers this, so the guard and the classifier cannot drift
-        // apart on what counts as finished.
+        // A side effect that reached the tool but left no decided verdict — empty, truncated,
+        // malformed, in flight, or carrying an unusable completion credential — is unconfirmed.
+        // A pre-dispatch refusal and a proven completion are both decided and pass this.
         val unreadableSideEffect = !readOnly &&
             decoded == null &&
-            !ResultContract.legacyPayloadIsDecided(resultJson)
+            !ResultContract.provesDecided(resultJson)
         val outcome = when {
             decoded != null -> decoded.outcome
             unreadableSideEffect -> ToolOutcome.UNKNOWN
             else -> null
         }
-        // Whatever happens below, the caller must never be handed an unreadable payload as if it
-        // were a retryable failure: the guard and the reported result have to agree.
-        val reported = if (unreadableSideEffect) {
-            BuiltinToolResult.unknown(
-                message = "'$toolName' was dispatched but its result arrived empty, truncated, or " +
-                    "without a readable verdict, so its effect could not be confirmed.",
-                hint = "Re-read the screen with screen_content to see what actually happened, then " +
-                    "continue in a new round. " + BuiltinToolResult.OUTCOME_UNKNOWN_HINT,
-            ).toJsonString()
-        } else {
-            resultJson
+        // The caller is handed the canonical result, never the raw payload of an unconfirmed or
+        // self-contradicting exit: a payload that says `ok=true` next to `outcome=unknown`, or a
+        // verdict-less body, would otherwise be reported as if the action had been confirmed.
+        val reported = when {
+            decoded != null && decoded.outcome == ToolOutcome.UNKNOWN ->
+                BuiltinToolResult.unknown(
+                    code = decoded.code.takeIf { it.isNotBlank() }
+                        ?: BuiltinToolResult.OUTCOME_UNKNOWN_CODE,
+                    message = decoded.message.takeIf { it.isNotBlank() }
+                        ?: "'$toolName' did not confirm whether its action took effect.",
+                    hint = decoded.hint.takeIf { it.isNotBlank() }
+                        ?: BuiltinToolResult.OUTCOME_UNKNOWN_HINT,
+                    data = decoded.data,
+                ).toJsonString()
+
+            unreadableSideEffect ->
+                BuiltinToolResult.unknown(
+                    message = "'$toolName' was dispatched but its result arrived empty, " +
+                        "truncated, or without a readable verdict, so its effect could not be " +
+                        "confirmed.",
+                    hint = "Re-read the screen with screen_content to see what actually happened, " +
+                        "then continue in a new round. " + BuiltinToolResult.OUTCOME_UNKNOWN_HINT,
+                ).toJsonString()
+
+            else -> resultJson
         }
 
         if (round != generation) {
@@ -201,11 +214,7 @@ class RoundActionGuard {
             latch(toolName, "'$toolName' returned an unconfirmed outcome")
         }
 
-        if (unreadableSideEffect) {
-            reported
-        } else {
-            resultJson
-        }
+        reported
     }
 
     /**
