@@ -164,4 +164,33 @@ class SensitiveUiActionPolicyTest {
             )
         }
     }
+
+    @Test
+    fun clickGateRefusesTheChineseCommitPhrasesFromTheReview() {
+        listOf("确认支付100元", "删除全部照片", "发送给张三", "发送 消息").forEach { label ->
+            val refusal = SensitiveUiActionPolicy.clickGate(NodeAction.CLICK, label, null)
+
+            assertFalse("$label should be gated", refusal == null)
+            assertEquals("SENSITIVE_ACTION_CONFIRMATION_REQUIRED", refusal?.code)
+            assertFalse(refusal!!.ok)
+        }
+    }
+
+    @Test
+    fun clickGateAlsoRefusesASensitiveContentDescriptionBehindHarmlessText() {
+        val refusal = SensitiveUiActionPolicy.clickGate(NodeAction.CLICK, "下一步", "确认支付")
+
+        assertFalse(refusal == null)
+        assertEquals("SENSITIVE_ACTION_CONFIRMATION_REQUIRED", refusal?.code)
+    }
+
+    @Test
+    fun clickGateIsNotFooledByExtraWhitespaceInsideACommitPhrase() {
+        listOf("发送   消息", "Delete  all", "确认  支付").forEach { label ->
+            assertFalse(
+                "$label should be gated",
+                SensitiveUiActionPolicy.clickGate(NodeAction.CLICK, label, null) == null,
+            )
+        }
+    }
 }

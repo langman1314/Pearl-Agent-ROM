@@ -8,10 +8,12 @@ import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolExecutor
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolRegistry
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolRequest
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolResult
+import com.niki914.nexus.agentic.chat.agentic.buildin.RawJsonBuiltinTool
 import com.niki914.nexus.agentic.chat.agentic.custom.CustomCommandExecutionResult
 import com.niki914.nexus.agentic.chat.agentic.custom.CustomToolExecutor
 import com.niki914.nexus.agentic.runtime.settings.RuntimeEnvironment
 import com.niki914.s3ss10n.LocalToolConfig
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -19,6 +21,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import com.niki914.nexus.agentic.runtime.settings.model.RuntimeExecutionRule as ExecutionRule
 import com.niki914.nexus.agentic.runtime.settings.model.RuntimeExecutionRuleEnabledMode as ExecutionRuleEnabledMode
@@ -304,6 +307,180 @@ class ToolCallDispatcherTest {
         assertEquals(1, later.invocationCount)
     }
 
+    @Test
+    fun executeLocalTool_afterAnUnknownOutcomeNoFurtherSideEffectIsDispatched() = runTest {
+        installRuntimeSettingsGatewayForTest()
+        val unknown = RecordingBuiltinTool(
+            name = "node_action",
+            result = BuiltinToolResult.unknown(message = "tap was sent but never confirmed"),
+        )
+        val gesture = RecordingBuiltinTool("gesture")
+        var customExecutions = 0
+        val dispatcher = ToolCallDispatcher(
+            builtinToolExecutor = BuiltinToolExecutor(BuiltinToolRegistry(listOf(unknown, gesture))),
+            customToolExecutor = CustomToolExecutor(
+                timeoutMs = 1_000,
+                commandExecutor = { _, _ ->
+                    customExecutions += 1
+                    CustomCommandExecutionResult(ok = true, stdout = "sample_model")
+                },
+            ),
+            currentTools = {
+                ResolvedTools(
+                    builtinTools = listOf(
+                        LocalTool.Builtin("node_action", "Node action", unknown),
+                        LocalTool.Builtin("gesture", "Gesture", gesture),
+                    ),
+                    customTools = listOf(
+                        LocalTool.Custom(
+                            name = "device_model",
+                            description = "Read device model",
+                            enabled = true,
+                            command = "printf sample_model",
+                        )
+                    ),
+                )
+            },
+        )
+
+        dispatcher.executeLocalTool("node_action", """{"index":1}""", callId = "call-1")
+        val customJson = dispatcher.executeLocalTool("device_model", "{}", callId = "call-2")
+        val gestureJson = dispatcher.executeLocalTool(
+            "gesture",
+            """{"start_x":1,"start_y":2,"end_x":3,"end_y":4}""",
+            callId = "call-3",
+        )
+
+        assertEquals("nothing else may reach the device", 0, customExecutions)
+        assertEquals("nothing else may reach the device", 0, gesture.invocationCount)
+        assertEquals("ACTION_STATE_INDETERMINATE", jsonField(customJson, "code"))
+        assertEquals("failure", jsonField(customJson, "outcome"))
+        assertEquals("ACTION_STATE_INDETERMINATE", jsonField(gestureJson, "code"))
+    }
+
+    @Test
+    fun executeLocalTool_afterAnUnknownOutcomeObservationStillRuns() = runTest {
+        val unknown = RecordingBuiltinTool(
+            name = "node_action",
+            result = BuiltinToolResult.unknown(message = "unconfirmed"),
+        )
+        val screen = RecordingBuiltinTool(
+            name = "screen_content",
+            result = BuiltinToolResult.success(message = "snapshot_id: 7"),
+        )
+        val dispatcher = ToolCallDispatcher(
+            builtinToolExecutor = BuiltinToolExecutor(BuiltinToolRegistry(listOf(unknown, screen))),
+            customToolExecutor = CustomToolExecutor(),
+            currentTools = {
+                ResolvedTools(
+                    builtinTools = listOf(
+                        LocalTool.Builtin("node_action", "Node action", unknown),
+                        LocalTool.Builtin("screen_content", "Read screen", screen),
+                    ),
+                )
+            },
+        )
+
+        dispatcher.executeLocalTool("node_action", """{"index":1}""", callId = "call-1")
+        dispatcher.executeLocalTool("screen_content", "{}", callId = "call-2")
+
+        assertEquals("observation must stay available", 1, screen.invocationCount)
+    }
+
+    @Test
+    fun executeLocalTool_cancellationAfterDispatchKeepsTheRoundIndeterminate() = runTest {
+        val cancelled = ThrowingBuiltinTool("terminal", CancellationException("round cancelled"))
+        val later = RecordingBuiltinTool("gesture")
+        val dispatcher = ToolCallDispatcher(
+            builtinToolExecutor = BuiltinToolExecutor(BuiltinToolRegistry(listOf(cancelled, later))),
+            customToolExecutor = CustomToolExecutor(),
+            currentTools = {
+                ResolvedTools(
+                    builtinTools = listOf(
+                        LocalTool.Builtin("terminal", "Terminal", cancelled),
+                        LocalTool.Builtin("gesture", "Gesture", later),
+                    ),
+                )
+            },
+        )
+
+        val thrown = runCatching {
+            dispatcher.executeLocalTool("terminal", """{"action":"exec"}""", callId = "call-1")
+        }
+        val refusalJson = dispatcher.executeLocalTool(
+            "gesture",
+            """{"start_x":1,"start_y":2,"end_x":3,"end_y":4}""",
+            callId = "call-2",
+        )
+
+        assertTrue(thrown.exceptionOrNull() is CancellationException)
+        assertEquals(1, cancelled.invocationCount)
+        assertEquals(0, later.invocationCount)
+        assertEquals("ACTION_STATE_INDETERMINATE", jsonField(refusalJson, "code"))
+        assertFalse(jsonField(refusalJson, "ok").toBoolean())
+    }
+
+    @Test
+    fun executeLocalTool_failureThatNeverReachedTheDeviceDoesNotPoisonTheRound() = runTest {
+        val later = RecordingBuiltinTool("gesture")
+        val dispatcher = ToolCallDispatcher(
+            builtinToolExecutor = BuiltinToolExecutor(BuiltinToolRegistry(listOf(later))),
+            customToolExecutor = CustomToolExecutor(),
+            currentTools = {
+                ResolvedTools(
+                    builtinTools = listOf(LocalTool.Builtin("gesture", "Gesture", later)),
+                )
+            },
+        )
+
+        val notExecutable = dispatcher.executeLocalTool("no_such_tool", "{}", callId = "call-1")
+        dispatcher.executeLocalTool(
+            "gesture",
+            """{"start_x":1,"start_y":2,"end_x":3,"end_y":4}""",
+            callId = "call-2",
+        )
+
+        assertEquals("LOCAL_TOOL_NOT_EXECUTABLE", jsonField(notExecutable, "code"))
+        assertEquals("a call that never ran must stay retryable", 1, later.invocationCount)
+    }
+
+    @Test
+    fun executeLocalTool_rawUnknownVerdictStillLatchesTheBarrier() = runTest {
+        // A raw-json side-effecting tool whose payload cannot be decoded into a clean verdict. The
+        // barrier must not depend on decoding succeeding: the action may already have landed.
+        listOf("""{"ok":true,"outcome":"unknown"}""", """{"ok":{}}""").forEach { payload ->
+            val raw = RawPayloadBuiltinTool("terminal", payload)
+            val later = RecordingBuiltinTool("gesture")
+            val dispatcher = ToolCallDispatcher(
+                builtinToolExecutor = BuiltinToolExecutor(BuiltinToolRegistry(listOf(raw, later))),
+                customToolExecutor = CustomToolExecutor(),
+                currentTools = {
+                    ResolvedTools(
+                        builtinTools = listOf(
+                            LocalTool.Builtin("terminal", "Terminal", raw),
+                            LocalTool.Builtin("gesture", "Gesture", later),
+                        ),
+                    )
+                },
+            )
+
+            val resultJson = dispatcher.executeLocalTool(
+                "terminal",
+                """{"action":"exec","command":"echo hi"}""",
+                callId = "call-1",
+            )
+            val refusalJson = dispatcher.executeLocalTool(
+                "gesture",
+                """{"start_x":1,"start_y":2,"end_x":3,"end_y":4}""",
+                callId = "call-2",
+            )
+
+            assertEquals("'$payload' must be reported as unconfirmed", payload, resultJson)
+            assertEquals("'$payload' must stop further side effects", 0, later.invocationCount)
+            assertEquals("ACTION_STATE_INDETERMINATE", jsonField(refusalJson, "code"))
+        }
+    }
+
     private fun jsonField(json: String, key: String): String =
         Json.parseToJsonElement(json).jsonObject[key]!!.jsonPrimitive.content
 
@@ -332,5 +509,35 @@ class ToolCallDispatcherTest {
             invocationCount++
             return result
         }
+    }
+
+    /** A call that is dispatched and then dies in flight — cancellation or an unexpected throw. */
+    private class ThrowingBuiltinTool(
+        override val name: String,
+        private val throwable: Throwable,
+    ) : BuiltinTool() {
+        var invocationCount: Int = 0
+            private set
+
+        override fun configure(config: LocalToolConfig) = Unit
+
+        override suspend fun invoke(request: BuiltinToolRequest): BuiltinToolResult {
+            invocationCount++
+            throw throwable
+        }
+    }
+
+    /** A terminal-style tool that returns a raw JSON payload instead of a typed result. */
+    private class RawPayloadBuiltinTool(
+        override val name: String,
+        private val payload: String,
+    ) : BuiltinTool(), RawJsonBuiltinTool {
+        override fun configure(config: LocalToolConfig) = Unit
+
+        override suspend fun invoke(request: BuiltinToolRequest): BuiltinToolResult {
+            error("raw json tools must be dispatched through invokeRawJson")
+        }
+
+        override suspend fun invokeRawJson(request: BuiltinToolRequest): String = payload
     }
 }

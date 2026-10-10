@@ -4,9 +4,9 @@ import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolResult
 import com.niki914.nexus.agentic.chat.agentic.buildin.ToolOutcome
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonPrimitive
 
 /** How a completed local tool call should be read. */
 sealed interface LocalToolResultStatus {
@@ -58,18 +58,34 @@ object LocalToolResultClassifier {
 
         result.structuredErrorMessage()?.let { return LocalToolResultStatus.Failed(it) }
 
-        val explicitOk = result["ok"]?.jsonPrimitive?.booleanOrNull
+        // `as? JsonPrimitive` rather than `jsonPrimitive`: the latter throws on an object or array
+        // value, and a caller-supplied payload must never crash the classifier.
+        val okElement = result["ok"]
+        val explicitOk = (okElement as? JsonPrimitive)?.booleanOrNull
         if (explicitOk == false) {
             return LocalToolResultStatus.Failed(result.statusMessage() ?: "Tool returned ok=false.")
         }
+        if (okElement != null && explicitOk == null) {
+            // An `ok` that is present but unreadable is an unusable verdict: the call may already
+            // have landed, so it must not read as a pass either.
+            return LocalToolResultStatus.Unconfirmed(
+                result.statusMessage()
+                    ?: "Tool returned an unreadable ok field, so its result is unconfirmed."
+            )
+        }
 
-        val exitCode = result["exit_code"]
-            ?.jsonPrimitive
+        val exitCode = (result["exit_code"] as? JsonPrimitive)
             ?.contentOrNull
             ?.toIntOrNull()
         if (exitCode != null && exitCode != 0) {
             return LocalToolResultStatus.Failed(result.nonZeroExitMessage(exitCode))
         }
+
+        // An object with no field at all says nothing about what happened, so it cannot confirm a
+        // success. Objects that do carry tool-specific fields keep their previous reading: the raw
+        // terminal and observation shapes are data, not verdicts, and failing them would break
+        // observation.
+        if (result.isEmpty()) return emptyResult()
 
         return LocalToolResultStatus.Success
     }
@@ -119,13 +135,11 @@ object LocalToolResultClassifier {
 
     private fun JsonObject.structuredErrorMessage(): String? {
         val error = this["error"] as? JsonObject ?: return null
-        val code = error["code"]
-            ?.jsonPrimitive
+        val code = (error["code"] as? JsonPrimitive)
             ?.contentOrNull
             ?.takeIf { it.isNotBlank() }
             ?: return null
-        return error["message"]
-            ?.jsonPrimitive
+        return (error["message"] as? JsonPrimitive)
             ?.contentOrNull
             ?.takeIf { it.isNotBlank() }
             ?: code
@@ -138,7 +152,7 @@ object LocalToolResultClassifier {
     private fun JsonObject.statusMessage(): String? {
         return listOf("stderr", "message", "code")
             .firstNotNullOfOrNull { key ->
-                this[key]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+                (this[key] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
             }
     }
 }

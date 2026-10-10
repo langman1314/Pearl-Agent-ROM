@@ -78,6 +78,39 @@ class RoundActionGuardTest {
     }
 
     @Test
+    fun consecutiveCallsWithDistinctIdsEachProceed() {
+        val guard = RoundActionGuard()
+        val scroll = """{"index":1,"action":"scroll_backward"}"""
+        val resultJson = BuiltinToolResult.success("scrolled").toJsonString()
+
+        guard.afterCall("node_action", scroll, "call-1", resultJson)
+        guard.afterCall("node_action", scroll, "call-2", resultJson)
+
+        assertEquals(
+            RoundActionGuard.Decision.Proceed,
+            guard.beforeCall("node_action", scroll, "call-3"),
+        )
+    }
+
+    @Test
+    fun sameCallIdWithDifferentArgumentsIsRefusedAsAConflict() {
+        val guard = RoundActionGuard()
+
+        guard.afterCall(
+            "node_action", """{"index":1}""", "call-1",
+            BuiltinToolResult.success("tapped").toJsonString(),
+        )
+
+        val decision = guard.beforeCall("node_action", """{"index":2}""", "call-1")
+
+        assertTrue(decision is RoundActionGuard.Decision.Refused)
+        val refusal = BuiltinToolResult.fromJsonString(
+            (decision as RoundActionGuard.Decision.Refused).resultJson,
+        )
+        assertEquals("ACTION_CALL_ID_CONFLICT", refusal?.code)
+    }
+
+    @Test
     fun unknownOutcomeLatchesTheRound() {
         val guard = RoundActionGuard()
 
@@ -144,8 +177,40 @@ class RoundActionGuardTest {
     }
 
     @Test
-    fun explicitFailureDoesNotLatchTheRound() {
+    fun lateResultFromAPreviousRoundDoesNotPolluteTheNewRound() {
         val guard = RoundActionGuard()
+        val round = guard.generation
+        guard.beginRound()
+        val successJson = BuiltinToolResult.success("tapped").toJsonString()
+
+        // The result of a call made before beginRound arrives now: its bookkeeping describes a call
+        // this round never made, so the same call id must still be free.
+        guard.afterCall("node_action", """{"index":1}""", "call-1", successJson, round = round)
+
+        assertEquals(
+            RoundActionGuard.Decision.Proceed,
+            guard.beforeCall("node_action", """{"index":1}""", "call-1"),
+        )
+        assertFalse(guard.isLatched)
+    }
+
+    @Test
+    fun lateUnconfirmedResultStillLatchesTheRoundEvenThoughItsRoundIsOver() {
+        val guard = RoundActionGuard()
+        val round = guard.generation
+        guard.beginRound()
+
+        guard.afterCall(
+            "node_action", """{"index":1}""", "call-1",
+            BuiltinToolResult.unknown(message = "tap was sent but never confirmed").toJsonString(),
+            round = round,
+        )
+
+        assertTrue("the device fact still counts", guard.isLatched)
+    }
+
+    @Test
+    fun explicitFailureDoesNotLatchTheRound() {        val guard = RoundActionGuard()
 
         guard.afterCall(
             "node_action", """{"index":1}""", "call-1",

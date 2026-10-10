@@ -66,9 +66,12 @@ data class BuiltinToolResult(
     val outcome: ToolOutcome = if (ok) ToolOutcome.SUCCESS else ToolOutcome.FAILURE,
 ) {
     fun toJsonString(): String {
+        // `ok` is the field older callers read, so it must never claim success for an outcome that
+        // is not a success — an `unknown` result is always serialized as `ok=false`.
+        val effectiveOk = ok && outcome.isSuccess
         return JsonObject(
             mapOf(
-                "ok" to JsonPrimitive(ok),
+                "ok" to JsonPrimitive(effectiveOk),
                 "outcome" to JsonPrimitive(outcome.wireName),
                 "code" to JsonPrimitive(code),
                 "message" to JsonPrimitive(message),
@@ -153,8 +156,11 @@ data class BuiltinToolResult(
          * Returns null when [json] is not a Nexus envelope at all (plain text, YAML, or a raw
          * terminal payload), so callers can fall back to their own classification.
          *
-         * A payload whose `ok` contradicts `outcome: success` decodes as [ToolOutcome.UNKNOWN] —
-         * a contradiction must never be read as success.
+         * Decoding is total: a missing field, a field of the wrong type (`{"ok":{}}`), an
+         * unrecognized `outcome` name, or a payload that contradicts itself (`ok=false` next to
+         * `outcome=success`, or `ok=true` next to `outcome=unknown`) never throws and never reads
+         * as success. Anything undecidable resolves to [ToolOutcome.UNKNOWN], which is reported as
+         * `ok=false` — the caller must not treat it as a failure it may replay either.
          */
         fun fromJsonString(json: String?): BuiltinToolResult? {
             val text = json?.trim().orEmpty()
@@ -163,25 +169,42 @@ data class BuiltinToolResult(
                 ?: return null
             if (obj.keys.none { it in ENVELOPE_KEYS }) return null
 
-            val ok = obj["ok"]?.jsonPrimitive?.booleanOrNull
-            val wireOutcome = ToolOutcome.fromWireName(obj["outcome"]?.jsonPrimitive?.contentOrNull)
+            // Read via `as? JsonPrimitive` rather than `jsonPrimitive`: the latter throws for an
+            // object/array value, which would crash the decoder on a caller-supplied payload.
+            val okValue = obj["ok"] as? JsonPrimitive
+            val ok = okValue?.booleanOrNull
             val code = obj.stringField("code").orEmpty()
+
+            val outcomeElement = obj["outcome"]
+            val rawOutcome = (outcomeElement as? JsonPrimitive)?.contentOrNull
+            val wireOutcome = ToolOutcome.fromWireName(rawOutcome)
+            // Declared but unusable: wrong type, blank, or an outcome name we do not recognize.
+            val outcomeUnusable = outcomeElement != null && wireOutcome == null
+
             val resolved = when {
-                wireOutcome == ToolOutcome.SUCCESS && ok == false -> ToolOutcome.UNKNOWN
+                // Contradictions are indeterminate, never success.
+                ok == false && wireOutcome == ToolOutcome.SUCCESS -> ToolOutcome.UNKNOWN
+                ok == true && wireOutcome != null && !wireOutcome.isSuccess -> ToolOutcome.UNKNOWN
                 wireOutcome != null -> wireOutcome
+                outcomeUnusable -> ToolOutcome.UNKNOWN
                 ok == true -> ToolOutcome.SUCCESS
                 ok == false -> ToolOutcome.FAILURE
+                // `ok` present but not a usable boolean: an unusable verdict is not a success.
+                obj.containsKey("ok") -> ToolOutcome.UNKNOWN
                 code.equals("OK", ignoreCase = true) -> ToolOutcome.SUCCESS
                 else -> ToolOutcome.UNKNOWN
             }
 
             return BuiltinToolResult(
-                ok = ok ?: resolved.isSuccess,
+                // `ok` always agrees with the outcome, so `unknown` is externally `ok=false`.
+                ok = resolved.isSuccess,
                 code = code,
                 message = obj.stringField("message").orEmpty(),
                 hint = obj.stringField("hint").orEmpty(),
                 fieldErrors = (obj["field_errors"] as? JsonObject)
-                    ?.mapValues { (_, value) -> value.jsonPrimitive.contentOrNull.orEmpty() }
+                    ?.mapValues { (_, value) ->
+                        (value as? JsonPrimitive)?.contentOrNull.orEmpty()
+                    }
                     .orEmpty(),
                 data = obj["data"] as? JsonObject ?: JsonObject(emptyMap()),
                 outcome = resolved,
@@ -189,7 +212,9 @@ data class BuiltinToolResult(
         }
 
         private fun JsonObject.stringField(key: String): String? {
-            return this[key]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+            return (this[key] as? JsonPrimitive)
+                ?.contentOrNull
+                ?.takeIf { it.isNotBlank() }
         }
     }
 }

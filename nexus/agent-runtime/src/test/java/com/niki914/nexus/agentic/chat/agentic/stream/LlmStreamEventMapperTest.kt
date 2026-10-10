@@ -119,4 +119,28 @@ class LlmStreamEventMapperTest {
         assertEquals("tool refused", (event as LlmStreamEvent.ToolFailed).message)
         assertFalse(event.unconfirmed)
     }
+
+    @Test
+    fun unreadableOkFieldIsUnconfirmedRatherThanSuccess() {
+        val event = mapToolSucceeded("""{"ok":{}}""")
+
+        assertTrue(event is LlmStreamEvent.ToolFailed)
+        assertTrue((event as LlmStreamEvent.ToolFailed).unconfirmed)
+    }
+
+    @Test
+    fun verdictLessEmptyObjectIsNeverSuccess() {
+        val event = mapToolSucceeded("{}")
+
+        assertTrue(event is LlmStreamEvent.ToolFailed)
+        assertFalse((event as LlmStreamEvent.ToolFailed).unconfirmed)
+    }
+
+    @Test
+    fun unusableOutcomeNameIsUnconfirmedRatherThanSuccess() {
+        val event = mapToolSucceeded("""{"ok":true,"outcome":"bogus"}""")
+
+        assertTrue(event is LlmStreamEvent.ToolFailed)
+        assertTrue((event as LlmStreamEvent.ToolFailed).unconfirmed)
+    }
 }

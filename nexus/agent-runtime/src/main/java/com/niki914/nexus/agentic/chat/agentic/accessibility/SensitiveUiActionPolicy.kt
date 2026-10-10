@@ -13,10 +13,14 @@ import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolResult
  * English labels keep word-boundary semantics: a keyword only counts as a whole token, so
  * `Send message` is blocked while `Payment methods` and `Messages` are not.
  *
- * Chinese labels are matched as bounded `[modifier] verb [object]` commit phrases. A noun-forming
- * tail (`方式`, `记录`, `历史`, `列表`, ...) turns the label into a navigation/lookup affordance and is
- * allowed, except when the verb itself is destructive (`删除`, `移除`, `清空`, `擦除`) - deleting
- * records must still be confirmed.
+ * Chinese labels are matched as bounded `[modifier] verb [tail]` commit phrases. A label is allowed
+ * only when it is a commit verb followed by a noun-forming lookup tail (`支付方式`, `发送记录`) and the
+ * verb is not destructive; deleting or clearing records (`删除记录`) still needs confirmation.
+ *
+ * Every other tail commits, because a follow-up word can hide the real target: an object
+ * (`发送消息`), a longer object (`删除全部照片`), an amount (`确认支付100元`) or a recipient
+ * (`发送给张三`). A tail that cannot be classified at all is treated the same way - an ambiguous
+ * high-risk control is confirmed rather than guessed.
  */
 object SensitiveUiActionPolicy {
     /** English keywords, matched on token boundaries. Multi-word phrases are matched verbatim. */
@@ -46,13 +50,6 @@ object SensitiveUiActionPolicy {
     private val chineseModifiers = setOf(
         "确认", "确定", "立即", "马上", "立刻", "现在", "直接",
         "一键", "再次", "继续", "请", "是否",
-    )
-
-    /** Bounded objects that may follow a commit verb, e.g. `拨打电话`, `发送消息`. */
-    private val chineseObjectNouns = setOf(
-        "消息", "内容", "邮件", "评论", "动态", "订单", "账单", "款项",
-        "文件", "照片", "图片", "视频", "号码", "电话", "联系人", "好友",
-        "申请", "请求", "权限", "验证码", "位置", "全部",
     )
 
     /** Noun-forming tails that make a label a lookup/navigation affordance, not a commit. */
@@ -134,11 +131,19 @@ object SensitiveUiActionPolicy {
         return verb to body.removePrefix(verb)
     }
 
-    private fun tailCommits(verb: String, tail: String): Boolean {
-        if (tail.isEmpty()) return true
-        if (tail in chineseObjectNouns) return true
-        if (tail in chineseNavigationTails) return verb in chineseDestructiveVerbs
-        return false
+    /**
+     * Decides whether what follows the commit verb still leaves the label a commit.
+     *
+     * Only a noun-forming lookup tail turns a label into navigation (`支付方式`, `发送记录`), and even
+     * then a destructive verb keeps it a commit (`删除记录`). Everything else stays a commit: a known
+     * object (`发送消息`), a longer object (`删除全部照片`), an amount (`确认支付100元`), a recipient
+     * (`发送给张三`), or a word this policy does not classify at all. An ambiguous high-risk label is
+     * confirmed rather than guessed, because the very next word can hide what is really at stake.
+     */
+    private fun tailCommits(verb: String, tail: String): Boolean = when {
+        tail.isEmpty() -> true
+        tail in chineseNavigationTails -> verb in chineseDestructiveVerbs
+        else -> true
     }
 
     private fun String.stripModifierPrefixes(): String {
