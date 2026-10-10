@@ -4,6 +4,8 @@ import com.niki914.nexus.agentic.chat.LocalTool
 import com.niki914.nexus.agentic.chat.ResolvedTools
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolExecutor
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolResult
+import com.niki914.nexus.agentic.chat.agentic.buildin.DispatchStage
+import com.niki914.nexus.agentic.chat.agentic.buildin.ToolExecution
 import com.niki914.nexus.agentic.chat.agentic.custom.CustomToolExecutor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
@@ -53,7 +55,7 @@ class ToolCallDispatcher(
         // same barrier. Its arguments live in the tool definition, not in the call, so the call
         // identity is the tool name plus the call id.
         return executeGuarded(toolName = tool.name, argumentsJson = "{}", callId = callId) {
-            customToolExecutor.execute(tool)
+            customToolExecutor.executeWithEvidence(tool)
         }
     }
 
@@ -74,7 +76,7 @@ class ToolCallDispatcher(
                 argumentsJson = argumentsJson,
                 callId = callId,
             ) {
-                builtinToolExecutor.execute(
+                builtinToolExecutor.executeWithEvidence(
                     tool = builtinTool.tool,
                     argumentsJson = argumentsJson,
                     callId = callId,
@@ -93,7 +95,10 @@ class ToolCallDispatcher(
                 argumentsJson = argumentsJson,
                 callId = callId,
             ) {
-                customToolExecutor.execute(customTool)
+                // The custom tool executor owns the real execution result, so it reports the stage
+                // alongside the JSON: a blocked command never ran, and a dispatched one that lost
+                // its verdict is unconfirmed rather than retryable.
+                customToolExecutor.executeWithEvidence(customTool)
             }
         }
 
@@ -115,7 +120,7 @@ class ToolCallDispatcher(
         toolName: String,
         argumentsJson: String,
         callId: String?,
-        block: suspend () -> String,
+        block: suspend () -> ToolExecution,
     ): String = executionMutex.withLock {
         when (val decision = actionGuard.beforeCall(toolName, argumentsJson, callId)) {
             is RoundActionGuard.Decision.Replay -> decision.resultJson
@@ -139,10 +144,10 @@ class ToolCallDispatcher(
         toolName: String,
         argumentsJson: String,
         callId: String?,
-        block: suspend () -> String,
+        block: suspend () -> ToolExecution,
     ): String {
         val round = actionGuard.generation
-        val resultJson = try {
+        val execution = try {
             block()
         } catch (cancellation: CancellationException) {
             // The request is already on its way; cancelling this coroutine does not recall it.
@@ -163,6 +168,24 @@ class ToolCallDispatcher(
         // The guard returns what the caller must report: for a dispatched call whose payload was
         // empty, truncated, or verdict-less it is a proper `unknown` envelope instead of the raw
         // text, so the caller cannot mistake it for a retryable failure.
-        return actionGuard.afterCall(toolName, argumentsJson, callId, resultJson, round)
+        return actionGuard.afterCall(
+            toolName = toolName,
+            argumentsJson = argumentsJson,
+            callId = callId,
+            resultJson = execution.resultJson,
+            round = round,
+            evidence = execution.stage?.let { stage ->
+                DispatchEvidence(stage = stage, operation = execution.operation ?: toolName)
+            },
+        )
     }
 }
+
+/**
+ * Stage evidence for one dispatched call: what the tool's own exit proved, and which operation it
+ * performed. [operation] is what binds a completion credential to the action that may emit it.
+ */
+data class DispatchEvidence(
+    val stage: DispatchStage,
+    val operation: String,
+)

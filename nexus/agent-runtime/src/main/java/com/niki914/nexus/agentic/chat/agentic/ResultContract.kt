@@ -164,6 +164,56 @@ object ResultContract {
     fun refusalProven(obj: JsonObject): Boolean =
         errorCodeOf(obj["error"])?.let { it in PRE_DISPATCH_REFUSAL_CODES } == true
 
+    /**
+     * The readable diagnostics of a payload whose verdict could not be used.
+     *
+     * When a dispatched call did not prove a decided result, the caller is handed an `unknown`
+     * envelope instead of the raw body. That must not also throw away what the body did say: a
+     * write receipt's `bytes_written`/`sequence`/`replayed`, the partial output of a long command,
+     * and the error's code and message are exactly what makes the failure understandable — and
+     * re-running the operation to rediscover them is the one thing that must not happen.
+     *
+     * Only keys describing what the tool *observed* are carried. The request is never copied, and
+     * unknown keys are dropped rather than passed through, so command text, credentials and other
+     * request-side data cannot ride along under a name this list has not seen. Everything kept here
+     * lands inside the `data` object of an envelope whose outcome is already `unknown`, so no key
+     * copied here can be read back as a top-level completion credential.
+     */
+    fun diagnostics(resultJson: String?): JsonObject {
+        val text = resultJson?.trim().orEmpty()
+        val obj = runCatching { Json.parseToJsonElement(text) as? JsonObject }.getOrNull()
+            ?: return JsonObject(emptyMap())
+        val kept = linkedMapOf<String, JsonElement>()
+        for (key in DIAGNOSTIC_KEYS) {
+            val value = obj[key] ?: continue
+            kept[key] = value
+        }
+        (obj["error"] as? JsonObject)?.let { error ->
+            val details = linkedMapOf<String, JsonElement>()
+            (error["code"] as? JsonPrimitive)?.let { details["code"] = it }
+            (error["message"] as? JsonPrimitive)?.let { details["message"] = it }
+            if (details.isNotEmpty()) kept["error"] = JsonObject(details)
+        }
+        return JsonObject(kept)
+    }
+
+    private val DIAGNOSTIC_KEYS = listOf(
+        "session",
+        "identity",
+        "exit_code",
+        "stdout",
+        "stderr",
+        "elapsed_seconds",
+        "stdout_partial",
+        "stderr_partial",
+        "async_id",
+        "accepted",
+        "bytes_written",
+        "sequence",
+        "replayed",
+        "closed",
+    )
+
     /** The usable code of a structured `error` value, or null when it is absent or not text. */
     private fun errorCodeOf(error: JsonElement?): String? {
         val code = (error as? JsonObject)?.get("code") as? JsonPrimitive ?: return null

@@ -29,35 +29,49 @@ class BuiltinToolExecutor(
         argumentsJson: String,
         callId: String? = null,
     ): String {
-        if (tool is RawJsonBuiltinTool) {
-            return try {
-                tool.invokeRawJson(
-                    BuiltinToolRequest(
-                        name = tool.name,
-                        argumentsJson = argumentsJson,
-                        callId = callId,
-                    )
-                )
-            } catch (throwable: Throwable) {
-                if (throwable is CancellationException) {
-                    throw throwable
-                }
-                UnexpectedToolFailure(tool.name, throwable).toResultJson()
-            }
-        }
+        return executeWithEvidence(tool, argumentsJson, callId).resultJson
+    }
+
+    /**
+     * Runs the tool once and reports what its exit could prove about the dispatch stage.
+     *
+     * A tool that implements [RawOutcomeProducing] is asked for its evidence and its result in the
+     * same call, so the work never runs twice. Everything else reports no stage: the guard then
+     * treats a side effect conservatively instead of accepting a payload's own claim, while the
+     * `BuiltinToolResult` envelope that non-raw tools return still speaks for itself.
+     */
+    suspend fun executeWithEvidence(
+        tool: BuiltinTool,
+        argumentsJson: String,
+        callId: String? = null,
+    ): ToolExecution {
+        val request = BuiltinToolRequest(
+            name = tool.name,
+            argumentsJson = argumentsJson,
+            callId = callId,
+        )
         return try {
-            tool.invoke(
-                BuiltinToolRequest(
-                    name = tool.name,
-                    argumentsJson = argumentsJson,
-                    callId = callId,
-                )
-            ).toJsonString()
+            when {
+                tool is RawOutcomeProducing -> {
+                    val outcome = tool.invokeRawJsonWithEvidence(request)
+                    ToolExecution(
+                        resultJson = outcome.resultJson,
+                        stage = outcome.stage,
+                        operation = outcome.operation,
+                    )
+                }
+
+                tool is RawJsonBuiltinTool -> ToolExecution(resultJson = tool.invokeRawJson(request))
+
+                else -> ToolExecution(resultJson = tool.invoke(request).toJsonString())
+            }
         } catch (throwable: Throwable) {
             if (throwable is CancellationException) {
                 throw throwable
             }
-            UnexpectedToolFailure(tool.name, throwable).toResultJson()
+            // The tool threw instead of answering. Whether anything reached the device is exactly
+            // what is unknown here, so no stage is claimed and the guard stays conservative.
+            ToolExecution(resultJson = UnexpectedToolFailure(tool.name, throwable).toResultJson())
         }
     }
 

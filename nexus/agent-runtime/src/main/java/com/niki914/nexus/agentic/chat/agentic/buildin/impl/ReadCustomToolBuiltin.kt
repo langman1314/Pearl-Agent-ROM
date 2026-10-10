@@ -3,7 +3,11 @@ package com.niki914.nexus.agentic.chat.agentic.buildin.impl
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinTool
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolRequest
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolResult
+import com.niki914.nexus.agentic.chat.agentic.buildin.DispatchStage
 import com.niki914.nexus.agentic.chat.agentic.buildin.RawJsonBuiltinTool
+import com.niki914.nexus.agentic.chat.agentic.buildin.RawOutcomeProducing
+import com.niki914.nexus.agentic.chat.agentic.buildin.RawToolOutcome
+import com.niki914.nexus.agentic.chat.agentic.buildin.rawOutcome
 import com.niki914.nexus.agentic.runtime.settings.RuntimeEnvironment
 import com.niki914.s3ss10n.LocalToolConfig
 import kotlinx.coroutines.CancellationException
@@ -17,7 +21,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import com.niki914.nexus.agentic.runtime.settings.model.RuntimeCustomTool as CustomTool
 
-class ReadCustomToolBuiltin : BuiltinTool(), RawJsonBuiltinTool {
+class ReadCustomToolBuiltin : BuiltinTool(), RawJsonBuiltinTool, RawOutcomeProducing {
     override val name: String = "read_custom_tool"
 
     override val description: String =
@@ -43,38 +47,73 @@ class ReadCustomToolBuiltin : BuiltinTool(), RawJsonBuiltinTool {
     }
 
     override suspend fun invokeRawJson(request: BuiltinToolRequest): String {
+        return invokeRawJsonWithEvidence(request).resultJson
+    }
+
+    /**
+     * The real exit path.
+     *
+     * Reading custom tool definitions changes nothing, so a failure here is a retryable failure
+     * rather than an indeterminate side effect: it just never proved anything about the read. The
+     * argument check happens before the settings gateway is touched, so it is the one exit that
+     * provably never reached the runtime at all.
+     */
+    override suspend fun invokeRawJsonWithEvidence(
+        request: BuiltinToolRequest,
+    ): RawToolOutcome {
         val requestedName = try {
             parseName(request.argumentsJson)
         } catch (throwable: Throwable) {
             if (throwable is CancellationException) {
                 throw throwable
             }
-            return BuiltinToolResult.failure(
-                code = "INVALID_ARGUMENTS_JSON",
-                message = "read_custom_tool arguments must be a JSON object with an optional name field.",
-                hint = """Example: {"name":"battery_status"} or {}""",
-                fieldErrors = mapOf(
-                    "argumentsJson" to (throwable.message ?: "Invalid JSON object.")
-                ),
-            ).toJsonString()
+            return refusal(
+                BuiltinToolResult.failure(
+                    code = "INVALID_ARGUMENTS_JSON",
+                    message = "read_custom_tool arguments must be a JSON object with an optional name field.",
+                    hint = """Example: {"name":"battery_status"} or {}""",
+                    fieldErrors = mapOf(
+                        "argumentsJson" to (throwable.message ?: "Invalid JSON object.")
+                    ),
+                ).toJsonString()
+            )
         }
 
         return try {
             val tools = RuntimeEnvironment.awaitSettingsGateway().listCustomTools()
-            requestedName
-                ?.let { name -> singleToolResult(name, tools) }
-                ?: allToolsResult(tools)
+            // The read returned, so its result is a definite one — including "no such tool".
+            decided(
+                requestedName
+                    ?.let { name -> singleToolResult(name, tools) }
+                    ?: allToolsResult(tools)
+            )
         } catch (throwable: Throwable) {
             if (throwable is CancellationException) {
                 throw throwable
             }
-            BuiltinToolResult.failure(
-                code = "SETTINGS_READ_FAILED",
-                message = "Failed to read custom tools: ${throwable.message ?: throwable::class.java.simpleName}.",
-                hint = "Retry after confirming the settings provider is available.",
-            ).toJsonString()
+            // The read failed, but a failed read has not changed anything, so it stays an ordinary
+            // retryable failure: refusing every later side effect would buy no safety here.
+            decided(
+                BuiltinToolResult.failure(
+                    code = "SETTINGS_READ_FAILED",
+                    message = "Failed to read custom tools: ${throwable.message ?: throwable::class.java.simpleName}.",
+                    hint = "Retry after confirming the settings provider is available.",
+                ).toJsonString()
+            )
         }
     }
+
+    /** A rejection proven to have happened before the settings gateway was touched. */
+    private fun refusal(json: String) =
+        rawOutcome(operation = READ_CUSTOM_TOOL, stage = DispatchStage.NOT_DISPATCHED, json = json)
+
+    /** A read that really ran and really produced a result. */
+    private fun decided(json: String) =
+        rawOutcome(
+            operation = READ_CUSTOM_TOOL,
+            stage = DispatchStage.DISPATCHED_CONFIRMED,
+            json = json,
+        )
 
     private fun parseName(argumentsJson: String): String? {
         val element = try {
@@ -126,6 +165,7 @@ class ReadCustomToolBuiltin : BuiltinTool(), RawJsonBuiltinTool {
     }
 
     companion object {
+        private const val READ_CUSTOM_TOOL = "read_custom_tool"
         private const val READ_CUSTOM_TOOL_SCHEMA = """
             {
               "type": "object",

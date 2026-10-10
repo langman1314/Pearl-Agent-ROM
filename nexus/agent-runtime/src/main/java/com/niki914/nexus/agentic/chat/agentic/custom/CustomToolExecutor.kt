@@ -2,9 +2,12 @@ package com.niki914.nexus.agentic.chat.agentic.custom
 
 import com.niki914.nexus.agentic.chat.LocalTool
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolResult
+import com.niki914.nexus.agentic.chat.agentic.buildin.DispatchStage
+import com.niki914.nexus.agentic.chat.agentic.buildin.ToolExecution
 import com.niki914.nexus.agentic.chat.agentic.shell.ShellCommandSafetyPolicy
 import com.niki914.nexus.agentic.chat.agentic.shell.TerminalCommandOutcome
 import com.niki914.nexus.agentic.chat.agentic.shell.TerminalSessionPool
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -15,41 +18,87 @@ class CustomToolExecutor(
         ::executeTerminalCommand,
 ) {
     suspend fun execute(tool: LocalTool.Custom): String {
+        return executeWithEvidence(tool).resultJson
+    }
+
+    /**
+     * Runs the custom tool's command and reports the stage its own result proves.
+     *
+     * The evidence is built from the *real* execution result, never from the command's own stdout: a
+     * command printing "done" has proved nothing about whether it ran. Every exit before the
+     * executor call is a refusal; every exit after it is at least dispatched, and an exit that
+     * cannot prove a definite result stays unconfirmed.
+     */
+    suspend fun executeWithEvidence(tool: LocalTool.Custom): ToolExecution {
         val command = tool.command.trim()
         if (command.isBlank()) {
-            return buildFailureJson(
-                command = command,
-                message = "Custom tool '${tool.name}' has empty command.",
+            return refused(
+                buildFailureJson(
+                    command = command,
+                    message = "Custom tool '${tool.name}' has empty command.",
+                )
             )
         }
         val decision = safetyPolicy.evaluate(command)
         if (!decision.allowed) {
-            return buildFailureJson(
-                command = command,
-                message = decision.reason.ifBlank { "Command blocked by safety policy." },
+            return refused(
+                buildFailureJson(
+                    command = command,
+                    message = decision.reason.ifBlank { "Command blocked by safety policy." },
+                )
             )
         }
-        val result = commandExecutor(command, timeoutMs)
+        val result = try {
+            commandExecutor(command, timeoutMs)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (throwable: Throwable) {
+            // The executor threw rather than answering, which says nothing about whether the command
+            // reached the terminal: unconfirmed, not a retryable failure.
+            return unconfirmed(
+                BuiltinToolResult.unknown(
+                    message = "Custom tool '${tool.name}' failed while running its command, so its " +
+                        "effect could not be confirmed: ${throwable.message ?: "unknown error"}",
+                    hint = "Re-read the screen with screen_content to see what actually happened, " +
+                        "then continue in a new round. " + BuiltinToolResult.OUTCOME_UNKNOWN_HINT,
+                ).toJsonString()
+            )
+        }
         return if (result.ok) {
-            buildSuccessJson(command = command, stdout = result.stdout)
+            // A definite success: the command ran and reported exit code 0.
+            ToolExecution(
+                resultJson = buildSuccessJson(command = command, stdout = result.stdout),
+                stage = DispatchStage.DISPATCHED_CONFIRMED,
+            )
         } else if (result.unconfirmed) {
             // The command had already been handed to the terminal when this happened, so its effect
             // is unknown rather than failed: it may still be running, or may already have landed.
             // Reporting a retryable failure here would invite running it twice.
-            BuiltinToolResult.unknown(
-                message = "Custom tool '${tool.name}' did not come back with a confirmed result: " +
-                    result.message,
-                hint = "Re-read the screen with screen_content to see what actually happened, then " +
-                    "continue in a new round. " + BuiltinToolResult.OUTCOME_UNKNOWN_HINT,
-                data = JsonObject(mapOf("command" to JsonPrimitive(command))),
-            ).toJsonString()
+            unconfirmed(
+                BuiltinToolResult.unknown(
+                    message = "Custom tool '${tool.name}' did not come back with a confirmed " +
+                        "result: ${result.message}",
+                    hint = "Re-read the screen with screen_content to see what actually happened, " +
+                        "then continue in a new round. " + BuiltinToolResult.OUTCOME_UNKNOWN_HINT,
+                    data = JsonObject(mapOf("command" to JsonPrimitive(command))),
+                ).toJsonString()
+            )
         } else {
-            buildFailureJson(
-                command = command,
-                message = result.message,
+            // A definite failure: the command really ran and really reported one, so the caller may
+            // retry it. This is a decided result even though the outcome is a failure — the stage
+            // records that the call was dispatched, not that it succeeded.
+            ToolExecution(
+                resultJson = buildFailureJson(command = command, message = result.message),
+                stage = DispatchStage.DISPATCHED_CONFIRMED,
             )
         }
     }
+
+    private fun refused(json: String) =
+        ToolExecution(resultJson = json, stage = DispatchStage.NOT_DISPATCHED)
+
+    private fun unconfirmed(json: String) =
+        ToolExecution(resultJson = json, stage = DispatchStage.DISPATCHED_UNCONFIRMED)
 
     private fun buildSuccessJson(command: String, stdout: String): String {
         return JsonObject(
@@ -95,13 +144,23 @@ private suspend fun executeTerminalCommand(
     return when (val outcome =
         TerminalSessionPool.executeCustomCommand(command = command, timeoutMs = timeoutMs)) {
         is TerminalCommandOutcome.Success -> {
-            val exitCode = outcome.result.exitCode ?: -1
+            val exitCode = outcome.result.exitCode
             val stdout = outcome.result.stdout.toByteArray().decodeToString() +
                     outcome.result.stderr.toByteArray().decodeToString()
-            if (exitCode == 0) {
-                CustomCommandExecutionResult(ok = true, stdout = stdout)
-            } else {
-                CustomCommandExecutionResult(
+            when {
+                exitCode == null -> CustomCommandExecutionResult(
+                    ok = false,
+                    // A completion credential that is missing proves nothing about the result, so
+                    // this cannot be reported as the definite failure a retry would assume.
+                    unconfirmed = true,
+                    message = stdout.ifBlank {
+                        "The command finished without reporting an exit code."
+                    },
+                )
+
+                exitCode == 0 -> CustomCommandExecutionResult(ok = true, stdout = stdout)
+
+                else -> CustomCommandExecutionResult(
                     ok = false,
                     message = stdout.ifBlank { "Command exited with code $exitCode." },
                 )
@@ -118,16 +177,23 @@ private suspend fun executeTerminalCommand(
 
         is TerminalCommandOutcome.Failure -> CustomCommandExecutionResult(
             ok = false,
+            // This runs inside an open-then-execute composite, so the command may already have been
+            // handed over before the failure surfaced: not a definite result.
+            unconfirmed = true,
             message = outcome.failure.message ?: "Terminal command failed.",
         )
 
         is TerminalCommandOutcome.SessionNotFound -> CustomCommandExecutionResult(
             ok = false,
+            // The open step of this composite call may already have happened, so a later lookup
+            // failure does not prove the command never ran.
+            unconfirmed = true,
             message = "Terminal session '${outcome.session}' not found.",
         )
 
         is TerminalCommandOutcome.Busy -> CustomCommandExecutionResult(
             ok = false,
+            unconfirmed = true,
             message = "Another custom tool command is already running.",
         )
 

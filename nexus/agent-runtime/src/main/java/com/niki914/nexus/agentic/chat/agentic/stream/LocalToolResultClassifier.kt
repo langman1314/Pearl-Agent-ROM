@@ -97,6 +97,11 @@ object LocalToolResultClassifier {
         // Consistent with the guard: a payload whose completion credential is present but unusable
         // (a quoted, fractional or object-valued exit_code, closed=false) claims a completion it
         // cannot prove, and an in-flight receipt has not finished. Neither may read as a success.
+        //
+        // The tool name is deliberately *not* passed here. Binding a completion credential to the
+        // action that may emit it is the dispatcher's job, where the real tool identity is known; a
+        // classifier that guessed it from a name would be reading the same payload into a different
+        // verdict than the one the guard already recorded.
         when (ResultContract.readObject(result)) {
             is PayloadReading.Completed, PayloadReading.Refused -> Unit
             PayloadReading.Indeterminate -> return LocalToolResultStatus.Unconfirmed(

@@ -1,6 +1,7 @@
 package com.niki914.nexus.agentic.chat.agentic
 
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolResult
+import com.niki914.nexus.agentic.chat.agentic.buildin.DispatchStage
 import com.niki914.nexus.agentic.chat.agentic.buildin.ToolOutcome
 
 /**
@@ -137,21 +138,45 @@ class RoundActionGuard {
         callId: String?,
         resultJson: String,
         round: Int = generation,
+        evidence: DispatchEvidence? = null,
     ): String = synchronized(lock) {
         val readOnly = toolName in READ_ONLY_TOOLS
         val decoded = BuiltinToolResult.fromJsonString(resultJson)
+        // The trusted channel wins when it is present: the production branch that really ran says
+        // which stage the call reached. A payload's own `stage`/`operation` fields are never read —
+        // they would be self-report, and self-report is not evidence. The stage is not taken on
+        // faith either: "nothing was dispatched" only counts when the payload really is a readable
+        // refusal or failure, so a branch that claimed it while returning a broken body still
+        // latches instead of releasing the barrier.
+        val payloadIsDecided = decoded != null || ResultContract.provesDecided(resultJson, toolName)
+        val notDispatched = evidence?.stage == DispatchStage.NOT_DISPATCHED && payloadIsDecided
         // A side effect that reached the tool but left no decided verdict — empty, truncated,
         // malformed, in flight, an unproven failure, or a credential that cannot carry the meaning
         // it claims — is unconfirmed. A pre-dispatch refusal and a proven completion pass this, and
         // the tool name matters: a handle is only a handle in a tool that can emit it.
-        val unreadableSideEffect = !readOnly &&
+        val unreadableSideEffect = !readOnly && !notDispatched &&
+            decoded == null &&
+            !ResultContract.provesDecided(resultJson, toolName)
+        // The stage alone never decides either: a branch that claims a decision still has to hand
+        // back a payload that carries one, so a definite stage over an unreadable body stays
+        // unconfirmed rather than releasing the barrier.
+        val stageUnconfirmed = evidence?.stage == DispatchStage.DISPATCHED_UNCONFIRMED
+        val stageUndecided = evidence?.stage == DispatchStage.DISPATCHED_CONFIRMED &&
             decoded == null &&
             !ResultContract.provesDecided(resultJson, toolName)
         val outcome = when {
+            // A payload that declares itself unconfirmed stays unconfirmed whatever the stage says:
+            // the stage may refuse to *release* a call, never release one the payload flags.
+            decoded != null && decoded.outcome == ToolOutcome.UNKNOWN -> ToolOutcome.UNKNOWN
+            readOnly -> null
+            notDispatched -> null
+            stageUnconfirmed || stageUndecided -> ToolOutcome.UNKNOWN
             decoded != null -> decoded.outcome
+            // No evidence at all: an unwired raw side effect keeps the conservative payload reading.
             unreadableSideEffect -> ToolOutcome.UNKNOWN
             else -> null
         }
+        val unaccounted = unreadableSideEffect || stageUnconfirmed || stageUndecided
         // The caller is handed the canonical result, never the raw payload of an unconfirmed or
         // self-contradicting exit: a payload that says `ok=true` next to `outcome=unknown`, or a
         // verdict-less body, would otherwise be reported as if the action had been confirmed.
@@ -167,13 +192,36 @@ class RoundActionGuard {
                     data = decoded.data,
                 ).toJsonString()
 
-            unreadableSideEffect ->
+            unaccounted && decoded != null ->
+                // An envelope that carries a verdict the stage contradicts: keep what it said, but
+                // report it as unconfirmed.
                 BuiltinToolResult.unknown(
-                    message = "'$toolName' was dispatched but its result arrived empty, " +
-                        "truncated, or without a readable verdict, so its effect could not be " +
-                        "confirmed.",
+                    code = decoded.code.takeIf { it.isNotBlank() }
+                        ?: BuiltinToolResult.OUTCOME_UNKNOWN_CODE,
+                    message = decoded.message.takeIf { it.isNotBlank() }
+                        ?: "'$toolName' did not confirm whether its action took effect.",
+                    hint = decoded.hint.takeIf { it.isNotBlank() }
+                        ?: BuiltinToolResult.OUTCOME_UNKNOWN_HINT,
+                    data = decoded.data,
+                ).toJsonString()
+
+            unaccounted ->
+                BuiltinToolResult.unknown(
+                    message = if (evidence?.stage == DispatchStage.DISPATCHED_CONFIRMED) {
+                        "'$toolName' was dispatched and returned a result, but that result does " +
+                            "not carry a verdict this version can read, so its effect could not " +
+                            "be confirmed."
+                    } else {
+                        "'$toolName' was dispatched but its result arrived empty, truncated, or " +
+                            "without a readable verdict, so its effect could not be confirmed."
+                    },
                     hint = "Re-read the screen with screen_content to see what actually happened, " +
                         "then continue in a new round. " + BuiltinToolResult.OUTCOME_UNKNOWN_HINT,
+                    // Whatever the raw body did say — a write receipt, partial output, an error
+                    // code — stays readable. Throwing it away would leave the caller with less
+                    // information than the payload it replaced, and would hide the diagnostics
+                    // that make the failure understandable without re-running anything.
+                    data = ResultContract.diagnostics(resultJson),
                 ).toJsonString()
 
             else -> resultJson
