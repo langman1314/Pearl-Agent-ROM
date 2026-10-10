@@ -54,6 +54,18 @@ internal class XiaoaiFixedTextAdapter(private val host: Host) {
         }
     }
 
+    /** Snapshot opaque owner identity before evaluating a possibly waiting version service.
+     * Never evaluate it for idle reset; a handoff during evaluation must not stop the successor,
+     * even if a caller accidentally reuses the same turn/dialog binding.
+     */
+    fun cancelIfOwned(version: () -> Long): Boolean {
+        val expectedOwner = synchronized(lock) { owner } ?: return false
+        val versionCode = version()
+        return synchronized(lock) {
+            if (owner !== expectedOwner) false else cancel(versionCode, expectedOwner.binding)
+        }
+    }
+
     fun cancel(versionCode: Long, expected: Binding? = null): Boolean = synchronized(lock) {
         val current = owner ?: return@synchronized false
         if (versionCode != XiaoaiFixedTextGate.VERIFIED_HOST_VERSION_CODE ||

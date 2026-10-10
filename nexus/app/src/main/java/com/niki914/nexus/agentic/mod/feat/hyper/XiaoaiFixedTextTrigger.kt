@@ -47,6 +47,6 @@ internal class XiaoaiFixedTextTrigger(
     fun onSessionEnd() = synchronized(lock) {
         pending?.let(end)
         pending = null
-        adapter.cancel(version()) // No owner => no stop. Unconfirmed stop does not release ownership.
+        adapter.cancelIfOwned(version) // Idle reset never reads version; handoff cannot stop a successor.
     }
 }
