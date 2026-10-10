@@ -79,7 +79,7 @@ XiaoAi 走**响应目标捕获 + Instruction 分片注入**：
 
 `app/src/main/java/com/niki914/nexus/agentic/mod/feat/hyper/XiaoaiFixedTextBroadcast.kt` 是为“先证明原生能播报”准备的显式测试入口，**默认关闭**（`actions.fixed_text_broadcast.business.enabled = false`），且只播报编译期常量文本，不接受 Agent 动态文本、不触发手机工具。
 
-选定的发声入口是 `dh0.u.speakTts(String, kz.b)`（内部走 `r00.g.speak(...)`），停止入口是 `r00.g.stopTTS()`。
+显式输入短语 `Nexus 播报自检` 经 `XiaoaiChatHook` 输入接缝进入 `XiaoaiFixedTextTrigger`，在相同 dialog 目标捕获后调用异步适配器；不经过正常 Agent reserve/submit。实际宿主端口因 session/停止完成确认不足已硬性禁用，配置无法绕过；不是可用 TTS 的声明。假端口完成回调释放 ownership；方法返回不释放，无确认取消不释放，迟到回调忽略，没有定时解锁。证据和后续启用/恢复条件见 `domains/hyperos-xiaoai.md`。
 
 为什么不注入 `SpeechSynthesizer.SpeakStream`：对已核对 sha256 的 507012002 反编译后可见，`SpeakStream` 的消费方（`cb0.db`、`pb0.s`）只是把 payload 文本累加进 `SpeakContentManager`（`com.xiaomi.voiceassistant.instruction.utils.b2`），并不启动合成或播放；真正发声要经过 `TTSPlayView.onPlayClick()` → `ea0.n1.speakTts(text)` 或等价的 `dh0.u.speakTts`。只注入 `SpeakStream` 会是一个“看着接通、其实没有声音”的占位实现。
 

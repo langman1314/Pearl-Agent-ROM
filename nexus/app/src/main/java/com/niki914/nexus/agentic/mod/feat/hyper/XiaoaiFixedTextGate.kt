@@ -36,6 +36,9 @@ object XiaoaiFixedTextGate {
         /** 绑定过的目标已失效。 */
         TARGET_INVALIDATED,
 
+        /** 宿主完成/定向停止契约尚不能证明安全；配置无法绕过。 */
+        BACKEND_UNVERIFIED,
+
         /** 全部前置条件满足，可以发起一次播报调用。 */
         ALLOWED,
     }

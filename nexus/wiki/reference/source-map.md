@@ -37,7 +37,8 @@
 - `feat/hyper/XiaoaiInstructionGate.kt`: 原生指令闸门判定（纯逻辑，可单测）
 - `feat/hyper/XiaoaiStreamContainerInstruction.kt`: 容器指令脱敏 shape 诊断
 - `feat/hyper/XiaoaiFixedTextGate.kt`: 固定文本播报前置条件判定（纯逻辑，可单测）
-- `feat/hyper/XiaoaiFixedTextBroadcast.kt`: 原生固定文本播报适配器（默认关闭）
+- `feat/hyper/XiaoaiFixedTextBroadcast.kt`: 异步播报所有权适配器；真实宿主端口因生命周期证据不足硬性禁用
+- `feat/hyper/XiaoaiFixedTextTrigger.kt`: 固定自检短语/同 dialog 目标的一次性接线，不调用 Agent
 - `feat/hyper/XiaoaiRenderSession.kt`: XiaoAi 渲染会话
 - `feat/hyper/subhooks/CaptureInputHook.kt`: 捕获输入
 - `feat/hyper/subhooks/CaptureInstructionInputHook.kt`: 捕获最终 ASR/Query，并内联原生指令闸门

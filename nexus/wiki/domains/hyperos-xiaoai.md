@@ -34,7 +34,11 @@ XiaoAi 负责原生唤醒、待机、麦克风、VAD 与 ASR。Nexus 在 XiaoAi 
 
 ### 原生固定文本播报（默认关闭）
 
-`XiaoaiFixedTextBroadcast` 提供一个默认关闭的显式测试入口，只播报编译期固定常量文本。发声入口是 `dh0.u.speakTts(String, kz.b)`，停止入口是 `r00.g.stopTTS()`。
+实际接线：`XiaoaiChatHook.installInputHooks` → `XiaoaiFixedTextTrigger.onInput`（仅精确短语 **Nexus 播报自检**）→ 同 dialog 的 `CaptureResponseTargetHook` → `onTargetCaptured` → `XiaoaiFixedTextAdapter.broadcastFixedText`。匹配且配置开启时，在正常 reserve/submit 前消费输入，不调用模型或手机工具。输出协议无动态文本参数，只允许固定文本端口。每次短语最多派发一次，重复 target 事件不重放；派发前两次读取 injected turn/dialog 和 TTL 目标有效性。结算按原 turnId/dialogId 清理，旧回调不能清理新 owner。
+
+**当前实际宿主端口硬性禁用**（`HOST_BACKEND_ENABLEABLE = false`），配置 true 也不能发声；明确记录 `BACKEND_UNVERIFIED`，且不会建立自检轮次。原先未经确认的反射调用及全局停止已移除。假异步宿主验证了调用先返回、完成后释放、确认取消、拒绝无归属停止等状态机；这不是 Xposed/真机集成成功。无回调或停止无确认时保留所有权，不用定时器解锁。
+
+后续启用/恢复：本轮不能启用实际播报。先由队长裁决并补齐安全宿主端口：可归属的 session、完成/失败回调桥、定向且有完成确认的取消、宿主线程约束及无回调分支；通过独立复核后再获用户设备授权。届时在该版本的有效配置 `actions.fixed_text_broadcast.business.enabled` 改 true（当前无用户 UI 开关，须明确有效缓存/打包配置来源，不只改一个未生效 asset），唤醒小爱并说上述短语一次；须同会话目标到达才能派发。恢复为 false 并确认有效配置已恢复，按获准方式重载宿主。当前只能离线使用假端口复现链路，不能把上述未来步骤写成已可在手机运行。
 
 不注入 `SpeechSynthesizer.SpeakStream`：该版本里它的消费方（`cb0.db`、`pb0.s`）只把文本累加进 `SpeakContentManager`，不启动合成或播放；真正发声要经过 `TTSPlayView.onPlayClick()` → `ea0.n1.speakTts(text)`。只注入 `SpeakStream` 会是没有声音的占位实现。
 
@@ -42,7 +46,9 @@ XiaoAi 负责原生唤醒、待机、麦克风、VAD 与 ASR。Nexus 在 XiaoAi 
 
 ## 已知边界
 
-- 当前已实现文本 UI 输出；独立可靠 TTS 仍未获得 507012002 真机固定文本验证，因此不宣称可用。适配器代码已就绪但真机发声与否未经验证，日志不能替代听感证据。
+- 本地 APK 507012002 SHA-256：`326fe0601b11698e70f96aca5dc05d1c783cf675ebc872024e96b405aaf64406`。局部 jadx 输出证据：`dh0.u.java:14-33` 返回 void，linked/needTTS-off 分支同步 `onPlayFinish(true)` 不等于听见声音；`kz.b.java:4-10` 为三方法回调接口；`r00.o.java:1223-1249` 有无回调 early-return，且 `:1246` 的 canStop 参数实际为 `!arrayList.contains(enginePrefix)`，**不能把上游 speak 的 false 误当作 canStop=false**。`r00.z0.java:127-179` 设置 canStop/监听器并产生 sessionId，但上游 void 入口丢弃该 ID。
+- `r00.g.java:588-599` 的 stopTTS 仅在 canStop 时异步提交；`:111-115` 的停止体作用于多个全局 track，不提供本次播报的完成确认。`r00.z0.java:35-79` 转发回调；`o20.e.java:186-277` 的真实音频事件触发 start/finish；`y00.j1.java:733-740` 提交异步 Runnable。真实 callback 最终线程未确证，必须视为可能非调用线程，不能宣称主线程。状态机已用另一线程回调测试，但未验证真实桥接。
+- 尚缺 session 归属与安全停止确认、无回调失败可判定性、真实回调桥及线程保证；所以真实端口不可启用，而非仅默认 false。实际声音、结束、打断、再次唤醒全部待后续设备授权。
 - 指令闸门只有源码逻辑单测覆盖；Xposed 是否真的挂上宿主方法、宿主是否真的传入预期字段，仍只能靠真机 `nexus-x-log` 确认。两层覆盖不可互相代替。
 - 浮窗 detach 仍会触发 conversation reset；长任务与窗口生命周期的完全解耦仍需真机交互设计与验证。
 - 507012002 的最终 ASR getter 由 Xiaomi API 类签名和该版本真实日志交叉支持；仍必须在安装候选 APK 后验证唤醒词、长按、连续轮次与离线可用路径。

@@ -23,8 +23,32 @@ class XiaoaiChatHook(
 
     private val responseTargets = XiaoaiResponseTargetRegistry()
     private val inputDeduplicator = XiaoaiInputDeduplicator()
+    private val fixedTextTrigger = XiaoaiFixedTextTrigger(
+        adapter = XiaoaiFixedTextBroadcast.adapter,
+        enabled = { com.niki914.nexus.xposed.api.util.xTry("fixed_text.enabled") {
+            XiaoaiConfigProvider.FixedTextBroadcast.enabled
+        } ?: false },
+        version = { kotlinx.coroutines.runBlocking {
+            (com.niki914.nexus.agentic.repo.XRepo.web.await() as?
+                com.niki914.nexus.agentic.repo.WebSettingsResult.Success)?.requestedVersionCode ?: -1L
+        } },
+        begin = { dialogId ->
+            val turn = com.niki914.nexus.agentic.chat.ConversationTurnState().nextTurn(
+                dialogId, XiaoaiFixedTextTrigger.QUERY, com.niki914.nexus.agentic.chat.TurnMode.InjectedLLM)
+            ActiveTurnStore.setCurrent(turn)
+            XiaoaiFixedTextAdapter.Binding(turn.turnId, dialogId, XiaoaiFixedTextGate.VERIFIED_HOST_VERSION_CODE)
+        },
+        current = { ActiveTurnStore.isActiveInjection(it.turnId, it.dialogId) },
+        targetLive = responseTargets::hasLiveTarget,
+        end = { binding ->
+            if (ActiveTurnStore.clearIfOwner(binding.turnId, binding.dialogId)) {
+                responseTargets.clear(binding.dialogId)
+            }
+        },
+    )
 
     override suspend fun onSessionReset() {
+        fixedTextTrigger.onSessionEnd()
         super.onSessionReset()
         responseTargets.reset()
         inputDeduplicator.reset()
@@ -47,6 +71,7 @@ class XiaoaiChatHook(
                         "target=${target.javaClass.name}"
                 )
                 responseTargets.capture(dialogId, target)
+                fixedTextTrigger.onTargetCaptured(dialogId)
             }
         ).onHook(lpparam)
 
@@ -59,7 +84,8 @@ class XiaoaiChatHook(
         onInput: (AssistantCapturedInput) -> Unit
     ) {
         val deduplicatedInput: (AssistantCapturedInput) -> Unit = { input ->
-            if (inputDeduplicator.shouldDeliver(input)) onInput(input)
+            if (inputDeduplicator.shouldDeliver(input) &&
+                !fixedTextTrigger.onInput(input.roomId, input.query)) onInput(input)
         }
         CaptureInstructionInputHook(onInput = deduplicatedInput).onHook(lpparam)
         CaptureInputHook(onInput = deduplicatedInput).onHook(lpparam)
