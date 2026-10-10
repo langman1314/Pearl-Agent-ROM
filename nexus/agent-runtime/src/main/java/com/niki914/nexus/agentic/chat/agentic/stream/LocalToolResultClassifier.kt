@@ -58,14 +58,11 @@ object LocalToolResultClassifier {
                 plainTextStatus(text)
             }
 
-        // A refusal that happened before anything ran is an ordinary failure. A command that was
-        // already dispatched and then timed out or lost its channel is *not*: its effect is
-        // unknown, and showing it as a plain failure invites replaying an action that may already
-        // have landed.
-        val errorCode = (result["error"] as? JsonObject)
-            ?.let { (it["code"] as? JsonPrimitive)?.contentOrNull }
-            ?.uppercase()
-        if (errorCode != null && errorCode in ResultContract.POST_DISPATCH_INDETERMINATE_CODES) {
+        // A refusal that happened before anything ran is an ordinary failure, but only the codes the
+        // production refusal exits really emit qualify. Anything else — a timeout, a lost channel, a
+        // connection or authorisation failure, or a code this version does not know — may already
+        // have reached the device, so it must not read as a retryable failure.
+        if (result.structuredErrorMessage() != null && !ResultContract.refusalProven(result)) {
             return LocalToolResultStatus.Unconfirmed(
                 result.structuredErrorMessage()
                     ?: "The tool did not confirm whether its action took effect."

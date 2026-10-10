@@ -1,6 +1,7 @@
 package com.niki914.nexus.agentic.chat.agentic
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -20,9 +21,11 @@ sealed interface PayloadReading {
     data object Refused : PayloadReading
 
     /**
-     * The call had already been dispatched when it lost its verdict — a timeout, an internal error,
-     * a terminated runtime, a broken channel. The action may have landed, so this proves nothing
-     * about the outcome and must never be reported as a plain retryable failure.
+     * The call may already have been dispatched and its real effect is unproven: a timeout, an
+     * internal error, a terminated runtime, a broken channel, a connection or authorisation failure
+     * *after* the session existed, an error code this version has never seen, a write that was only
+     * accepted into a terminal's input — or a payload whose completion credential cannot carry the
+     * meaning it is being given.
      */
     data object Indeterminate : PayloadReading
 
@@ -54,23 +57,22 @@ sealed interface PayloadReading {
  * name. One reader answers for every consumer, so the dispatcher's first return, the guard's
  * bookkeeping, the replay of a call id and the classifier that feeds the UI cannot drift apart.
  *
- * The credential rules that matter:
+ * Two rules carry the safety of the whole boundary:
  *
- * - a synchronous terminal result is a completion only when `exit_code` is a valid integer; `0` and
- *   non-zero are explicit success and failure, and a process exiting proves nothing about the
- *   phone-side goal;
- * - a structured `error` is read *first*, because a timeout payload also carries a session handle
- *   and partial output: losing its verdict to a `session` key would report an unconfirmed action as
- *   a finished one;
- * - an async receipt (`async_id`) or a running poll (`stdout_partial`) is in flight, even when it
- *   carries `elapsed_seconds`; a bare `accepted` proves only that the request was taken, so it is
- *   readable but undecided. An interactive write receipt that reports the bytes it wrote did finish
- *   that write;
- * - a null or blank session/identity handle is not a session;
- * - `closed=false` is not a completed close.
+ * 1. **An unproven failure is unknown, not a refusal.** Only the codes the production refusal exits
+ *    actually emit are read as "nothing was dispatched" ([PRE_DISPATCH_REFUSAL_CODES]); every other
+ *    code — a connection lost mid-command, an authorisation that expired, a code this version has
+ *    never heard of, a code of the wrong type — is [PayloadReading.Indeterminate]. Defaulting the
+ *    unknown case to "refused" is precisely what lets a command that already reached the device be
+ *    retried.
+ *
+ * 2. **A credential is only a credential for the tool and the operation that emit it.** A session
+ *    handle comes from a terminal, a snapshot handle from an observation, and an interactive write
+ *    receipt reports that input was *written* — not that the command, let alone the phone goal,
+ *    finished. A key name alone never authorises the next side effect.
  */
 object ResultContract {
-    fun read(resultJson: String?): PayloadReading {
+    fun read(resultJson: String?, toolName: String? = null): PayloadReading {
         val text = resultJson?.trim().orEmpty()
         if (text.isEmpty()) return PayloadReading.Malformed
         val obj = runCatching { Json.parseToJsonElement(text) as? JsonObject }.getOrNull()
@@ -79,18 +81,20 @@ object ResultContract {
             } else {
                 PayloadReading.Opaque
             }
-        return readObject(obj)
+        return readObject(obj, toolName)
     }
 
-    fun readObject(obj: JsonObject): PayloadReading {
-        // A structured error is a verdict about the call itself, so it is read before anything else.
-        // It is also the only way to tell a dispatched-but-unconfirmed timeout from a call that was
-        // refused outright: both carry `error`, and only the code separates them.
-        obj.errorCode()?.let { code ->
-            return if (code in POST_DISPATCH_INDETERMINATE_CODES) {
-                PayloadReading.Indeterminate
-            } else {
-                PayloadReading.Refused
+    fun readObject(obj: JsonObject, toolName: String? = null): PayloadReading {
+        // A structured error is a verdict about the call, so it is read before anything else. It is
+        // also the only way to separate a refusal from a dispatched-but-unconfirmed failure: both
+        // carry `error`, and only the code tells them apart.
+        if (obj["error"] is JsonObject) {
+            val code = errorCodeOf(obj["error"])
+            return when {
+                code != null && code in PRE_DISPATCH_REFUSAL_CODES -> PayloadReading.Refused
+                // Everything else — a known transport/authorisation failure, an unrecognised code,
+                // or a code of the wrong type — does not prove the call never dispatched.
+                else -> PayloadReading.Indeterminate
             }
         }
 
@@ -117,22 +121,21 @@ object ResultContract {
             }
         }
 
-        // An interactive write receipt proves the write it reports: the byte count is the evidence,
-        // so a bare `accepted` without it is deliberately *not* covered here.
-        if (obj.containsKey("bytes_written")) {
-            return if (obj.integerField("bytes_written") != null) {
-                PayloadReading.Completed(failed = false)
-            } else {
-                PayloadReading.InvalidCredential
-            }
-        }
+        // An interactive write receipt proves the *write* and nothing beyond it: the bytes reached
+        // the terminal's input, not the command's exit and not the phone-side goal. It stays
+        // indeterminate so the barrier holds, while `bytes_written`/`sequence`/`replayed` stay
+        // readable as diagnostics.
+        if (obj.containsKey("bytes_written")) return PayloadReading.Indeterminate
 
-        // Opening a session and observing the screen are completions in their own right — but only
-        // with a usable handle: `{"session":null}` is the absence of a session, not a session.
-        if (obj.hasUsableHandle("session") || obj.hasUsableHandle("identity")) {
+        // A handle completes an action only in a tool that can emit it, and only as the right type:
+        // `{"session":true}` is not a session, and a terminal handle reported by a node action is
+        // not evidence that a terminal was opened.
+        if (toolName in TERMINAL_TOOLS && obj.hasTextHandle("session", "identity")) {
             return PayloadReading.Completed(failed = false)
         }
-        if (obj.hasUsableHandle("snapshot_id")) return PayloadReading.Completed(failed = false)
+        if (toolName in OBSERVATION_TOOLS && obj.hasSnapshotHandle()) {
+            return PayloadReading.Completed(failed = false)
+        }
 
         return PayloadReading.Opaque
     }
@@ -142,24 +145,45 @@ object ResultContract {
      * refusal. Only these may be handed back verbatim — anything else, including a readable but
      * verdict-less body, leaves a side effect unaccounted for.
      */
-    fun provesDecided(resultJson: String?): Boolean = when (read(resultJson)) {
-        is PayloadReading.Completed, PayloadReading.Refused -> true
-        PayloadReading.Indeterminate,
-        PayloadReading.InFlight,
-        PayloadReading.InvalidCredential,
-        PayloadReading.Malformed,
-        PayloadReading.Opaque,
-        -> false
+    fun provesDecided(resultJson: String?, toolName: String? = null): Boolean =
+        when (read(resultJson, toolName)) {
+            is PayloadReading.Completed, PayloadReading.Refused -> true
+            PayloadReading.Indeterminate,
+            PayloadReading.InFlight,
+            PayloadReading.InvalidCredential,
+            PayloadReading.Malformed,
+            PayloadReading.Opaque,
+            -> false
+        }
+
+    /**
+     * True only when a payload *proves* nothing was dispatched: a structured error whose code is one
+     * of the production refusal exits. Shared so the guard and the classifier cannot disagree about
+     * which errors the caller may retry.
+     */
+    fun refusalProven(obj: JsonObject): Boolean =
+        errorCodeOf(obj["error"])?.let { it in PRE_DISPATCH_REFUSAL_CODES } == true
+
+    /** The usable code of a structured `error` value, or null when it is absent or not text. */
+    private fun errorCodeOf(error: JsonElement?): String? {
+        val code = (error as? JsonObject)?.get("code") as? JsonPrimitive ?: return null
+        return code.contentOrNull?.takeIf { it.isNotBlank() }?.uppercase()
     }
 
-    private fun JsonObject.errorCode(): String? =
-        ((this["error"] as? JsonObject)?.get("code") as? JsonPrimitive)
-            ?.contentOrNull
-            ?.takeIf { it.isNotBlank() }
-            ?.uppercase()
+    private fun JsonObject.hasTextHandle(vararg keys: String): Boolean {
+        return keys.any { key ->
+            val primitive = this[key] as? JsonPrimitive ?: return@any false
+            // A number or boolean is not a handle, even though both serialise as primitives.
+            primitive.isString && primitive.contentOrNull?.isNotBlank() == true
+        }
+    }
 
-    private fun JsonObject.hasUsableHandle(key: String): Boolean =
-        ((this[key] as? JsonPrimitive)?.contentOrNull)?.isNotBlank() == true
+    /** A snapshot handle is an id: a non-blank string or a number, but never a boolean. */
+    private fun JsonObject.hasSnapshotHandle(): Boolean {
+        val element = this["snapshot_id"] as? JsonPrimitive ?: return false
+        if (element.isString) return element.contentOrNull?.isNotBlank() == true
+        return element.intOrNull != null
+    }
 
     private fun JsonObject.integerField(key: String): Int? {
         val primitive = this[key] as? JsonPrimitive ?: return null
@@ -171,10 +195,32 @@ object ResultContract {
     private fun JsonObject.booleanField(key: String): Boolean? =
         (this[key] as? JsonPrimitive)?.booleanOrNull
 
+    /** Tools that can open a terminal session, and so may legitimately report a session handle. */
+    val TERMINAL_TOOLS = setOf("terminal", "ssh_terminal")
+
+    /** Tools that observe the screen, and so may legitimately report a snapshot handle. */
+    val OBSERVATION_TOOLS = setOf("screen_content", "search_nodes")
+
     /**
-     * Error codes that mean the call had already been handed to the device when it lost its verdict.
-     * Everything else — a blocked command, a missing session, an invalid request — was refused
-     * before dispatch. Shared with the classifier so the two cannot disagree.
+     * The error codes the production *refusal* exits emit, each meaning the call was rejected
+     * before anything was handed to the device: a command blocked by policy, a session that does not
+     * exist, an async result already read, a session already busy, or a malformed request.
+     *
+     * Every other code — the transport and authorisation failures, and anything unrecognised — is
+     * read as indeterminate, because those payloads do not prove the call never dispatched.
+     */
+    val PRE_DISPATCH_REFUSAL_CODES = setOf(
+        "COMMAND_BLOCKED",
+        "SESSION_NOT_FOUND",
+        "ASYNC_NOT_FOUND",
+        "SESSION_BUSY",
+        "INVALID_REQUEST",
+    )
+
+    /**
+     * The codes known to mean the call had already been handed to the device when it lost its
+     * verdict. Every code outside [PRE_DISPATCH_REFUSAL_CODES] is treated the same way, so an
+     * unknown code can never be read as a refusal.
      */
     val POST_DISPATCH_INDETERMINATE_CODES = setOf(
         "TIMEOUT",

@@ -120,10 +120,9 @@ class ToolResultDecodingRegressionTest {
             // Custom tool success and the memorize/read_custom_tool envelopes.
             """{"ok":true,"command":"printf sample_model","stdout":"sample_model"}""",
             """{"ok":true}""",
-            // Terminal: open, exec, interactive write/read and close.
+            // Terminal: open, exec, interactive read and close.
             """{"session":"s1","identity":"local"}""",
             """{"exit_code":0,"stdout":"/","stderr":""}""",
-            """{"accepted":true,"bytes_written":3,"sequence":4,"replayed":false}""",
             """{"stdout":"","stderr":"","mode":"delta","sequence":3,"truncated":false}""",
             """{"closed":true}""",
             // Raw observation payloads and unstructured error strings keep their old handling.
@@ -136,6 +135,23 @@ class ToolResultDecodingRegressionTest {
                 LocalToolResultClassifier.status(payload),
             )
         }
+    }
+
+    @Test
+    fun sshWriteReceiptIsReadableButNotACompletedCommand() {
+        // Contract change, previously asserted as readable/successful here.
+        // Old assertion: `{"accepted":true,"bytes_written":3,"sequence":4,"replayed":false}` was part
+        // of `verdictLessToolPayloadsKeepTheirReading` and expected `Success`.
+        // New assertion: `Unconfirmed`. Basis: an interactive write receipt reports that bytes were
+        // accepted into the terminal's input — it does not prove the command exited, let alone that
+        // the phone-side goal was reached, so reading it as success would hide an unfinished
+        // operation. The receipt data stays readable to the caller.
+        assertTrue(
+            "an accepted write is not a completed command",
+            LocalToolResultClassifier.status(
+                """{"accepted":true,"bytes_written":3,"sequence":4,"replayed":false}"""
+            ) is LocalToolResultStatus.Unconfirmed,
+        )
     }
 
     @Test

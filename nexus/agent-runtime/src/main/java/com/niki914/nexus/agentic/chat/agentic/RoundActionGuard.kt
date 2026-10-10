@@ -141,11 +141,12 @@ class RoundActionGuard {
         val readOnly = toolName in READ_ONLY_TOOLS
         val decoded = BuiltinToolResult.fromJsonString(resultJson)
         // A side effect that reached the tool but left no decided verdict — empty, truncated,
-        // malformed, in flight, or carrying an unusable completion credential — is unconfirmed.
-        // A pre-dispatch refusal and a proven completion are both decided and pass this.
+        // malformed, in flight, an unproven failure, or a credential that cannot carry the meaning
+        // it claims — is unconfirmed. A pre-dispatch refusal and a proven completion pass this, and
+        // the tool name matters: a handle is only a handle in a tool that can emit it.
         val unreadableSideEffect = !readOnly &&
             decoded == null &&
-            !ResultContract.provesDecided(resultJson)
+            !ResultContract.provesDecided(resultJson, toolName)
         val outcome = when {
             decoded != null -> decoded.outcome
             unreadableSideEffect -> ToolOutcome.UNKNOWN
