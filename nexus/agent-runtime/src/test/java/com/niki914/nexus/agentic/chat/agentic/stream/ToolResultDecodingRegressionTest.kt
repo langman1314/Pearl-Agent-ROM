@@ -19,14 +19,35 @@ import org.junit.Test
 class ToolResultDecodingRegressionTest {
     @Test
     fun typeErrorInOkNeverThrowsAndNeverSucceeds() {
-        val decoded = BuiltinToolResult.fromJsonString("""{"ok":{}}""")
-
-        assertNotNull(decoded)
-        assertEquals(ToolOutcome.UNKNOWN, decoded!!.outcome)
-        assertFalse(decoded.ok)
-        assertTrue(
-            LocalToolResultClassifier.status("""{"ok":{}}""") is LocalToolResultStatus.Unconfirmed
+        // The full unusable-`ok` family R2-A1 names: object, array, null, unusable string, and each
+        // of them next to a contradictory `outcome=success`.
+        val unusableOkPayloads = listOf(
+            """{"ok":{}}""",
+            """{"ok":[]}""",
+            """{"ok":null}""",
+            """{"ok":"yes"}""",
+            """{"ok":{},"outcome":"success"}""",
+            """{"ok":[],"outcome":"success"}""",
+            """{"ok":null,"outcome":"success"}""",
+            """{"ok":"yes","outcome":"success"}""",
+            """{"ok":{},"outcome":"unknown"}""",
         )
+
+        for (payload in unusableOkPayloads) {
+            val decoded = BuiltinToolResult.fromJsonString(payload)
+
+            assertNotNull("'$payload' must still decode", decoded)
+            assertEquals("'$payload'", ToolOutcome.UNKNOWN, decoded!!.outcome)
+            assertFalse("'$payload' must not read as ok", decoded.ok)
+            assertTrue(
+                "'$payload' must be unconfirmed for the caller",
+                LocalToolResultClassifier.status(payload) is LocalToolResultStatus.Unconfirmed,
+            )
+            // Re-serializing an unknown result must stay externally unsuccessful and reversible.
+            val roundTrip = BuiltinToolResult.fromJsonString(decoded.toJsonString())
+            assertEquals(ToolOutcome.UNKNOWN, roundTrip?.outcome)
+            assertFalse(roundTrip!!.ok)
+        }
     }
 
     @Test

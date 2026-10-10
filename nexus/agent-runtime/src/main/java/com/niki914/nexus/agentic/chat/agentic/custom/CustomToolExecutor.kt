@@ -1,6 +1,7 @@
 package com.niki914.nexus.agentic.chat.agentic.custom
 
 import com.niki914.nexus.agentic.chat.LocalTool
+import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolResult
 import com.niki914.nexus.agentic.chat.agentic.shell.ShellCommandSafetyPolicy
 import com.niki914.nexus.agentic.chat.agentic.shell.TerminalCommandOutcome
 import com.niki914.nexus.agentic.chat.agentic.shell.TerminalSessionPool
@@ -31,6 +32,17 @@ class CustomToolExecutor(
         val result = commandExecutor(command, timeoutMs)
         return if (result.ok) {
             buildSuccessJson(command = command, stdout = result.stdout)
+        } else if (result.unconfirmed) {
+            // The command had already been handed to the terminal when this happened, so its effect
+            // is unknown rather than failed: it may still be running, or may already have landed.
+            // Reporting a retryable failure here would invite running it twice.
+            BuiltinToolResult.unknown(
+                message = "Custom tool '${tool.name}' did not come back with a confirmed result: " +
+                    result.message,
+                hint = "Re-read the screen with screen_content to see what actually happened, then " +
+                    "continue in a new round. " + BuiltinToolResult.OUTCOME_UNKNOWN_HINT,
+                data = JsonObject(mapOf("command" to JsonPrimitive(command))),
+            ).toJsonString()
         } else {
             buildFailureJson(
                 command = command,
@@ -68,6 +80,12 @@ data class CustomCommandExecutionResult(
     val ok: Boolean,
     val stdout: String = "",
     val message: String = "",
+    /**
+     * The command was already dispatched when this result was produced, and it did not report a
+     * confirmed verdict: a timeout or a crash of the command channel. Retrying it could repeat an
+     * action that already took effect, so it must not be offered as a plain failure.
+     */
+    val unconfirmed: Boolean = false,
 )
 
 private suspend fun executeTerminalCommand(
@@ -92,6 +110,9 @@ private suspend fun executeTerminalCommand(
 
         is TerminalCommandOutcome.Timeout -> CustomCommandExecutionResult(
             ok = false,
+            // The command was already running: a timeout says nothing about whether its effect
+            // landed, so this is an unconfirmed outcome, not a retryable failure.
+            unconfirmed = true,
             message = "Command timed out after ${timeoutMs}ms.",
         )
 
@@ -112,6 +133,9 @@ private suspend fun executeTerminalCommand(
 
         is TerminalCommandOutcome.UnexpectedError -> CustomCommandExecutionResult(
             ok = false,
+            // The command channel broke after the command was handed over: the same reasoning as a
+            // timeout applies, so this stays unconfirmed rather than retryable.
+            unconfirmed = true,
             message = outcome.throwable.message ?: "Unexpected terminal error.",
         )
     }

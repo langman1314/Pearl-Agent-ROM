@@ -180,17 +180,20 @@ data class BuiltinToolResult(
             val wireOutcome = ToolOutcome.fromWireName(rawOutcome)
             // Declared but unusable: wrong type, blank, or an outcome name we do not recognize.
             val outcomeUnusable = outcomeElement != null && wireOutcome == null
+            // `ok` is present but carries no usable boolean (object, array, null, "yes"). An
+            // unusable verdict is never a success, and a declared `outcome=success` cannot
+            // override it: the two fields disagree and the payload proves nothing.
+            val okDeclaredButUnusable = obj.containsKey("ok") && ok == null
 
             val resolved = when {
                 // Contradictions are indeterminate, never success.
                 ok == false && wireOutcome == ToolOutcome.SUCCESS -> ToolOutcome.UNKNOWN
                 ok == true && wireOutcome != null && !wireOutcome.isSuccess -> ToolOutcome.UNKNOWN
+                okDeclaredButUnusable -> ToolOutcome.UNKNOWN
                 wireOutcome != null -> wireOutcome
                 outcomeUnusable -> ToolOutcome.UNKNOWN
                 ok == true -> ToolOutcome.SUCCESS
                 ok == false -> ToolOutcome.FAILURE
-                // `ok` present but not a usable boolean: an unusable verdict is not a success.
-                obj.containsKey("ok") -> ToolOutcome.UNKNOWN
                 code.equals("OK", ignoreCase = true) -> ToolOutcome.SUCCESS
                 else -> ToolOutcome.UNKNOWN
             }

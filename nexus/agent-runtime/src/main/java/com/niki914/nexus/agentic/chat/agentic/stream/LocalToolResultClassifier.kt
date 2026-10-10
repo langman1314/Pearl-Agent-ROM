@@ -56,6 +56,20 @@ object LocalToolResultClassifier {
                 plainTextStatus(text)
             }
 
+        // A refusal that happened before anything ran is an ordinary failure. A command that was
+        // already dispatched and then timed out or lost its channel is *not*: its effect is
+        // unknown, and showing it as a plain failure invites replaying an action that may already
+        // have landed.
+        val errorCode = (result["error"] as? JsonObject)
+            ?.let { (it["code"] as? JsonPrimitive)?.contentOrNull }
+            ?.uppercase()
+        if (errorCode != null && errorCode in POST_DISPATCH_INDETERMINATE_CODES) {
+            return LocalToolResultStatus.Unconfirmed(
+                result.structuredErrorMessage()
+                    ?: "The tool did not confirm whether its action took effect."
+            )
+        }
+
         result.structuredErrorMessage()?.let { return LocalToolResultStatus.Failed(it) }
 
         // `as? JsonPrimitive` rather than `jsonPrimitive`: the latter throws on an object or array
@@ -155,4 +169,16 @@ object LocalToolResultClassifier {
                 (this[key] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
             }
     }
+
+    /**
+     * Error codes that mean the command had already been handed to the device when it failed, so
+     * its effect is unknown rather than absent. Anything else — a blocked command, a missing
+     * session, an invalid request — was refused before dispatch and stays retryable.
+     */
+    private val POST_DISPATCH_INDETERMINATE_CODES = setOf(
+        "TIMEOUT",
+        "INTERNAL_ERROR",
+        "RUNTIME_TERMINATED",
+        "SSH_CHANNEL_FAILED",
+    )
 }

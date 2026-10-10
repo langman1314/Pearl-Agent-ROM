@@ -160,7 +160,9 @@ class ToolCallDispatcher(
             )
             throw throwable
         }
-        actionGuard.afterCall(toolName, argumentsJson, callId, resultJson, round)
-        return resultJson
+        // The guard returns what the caller must report: for a dispatched call whose payload was
+        // empty, truncated, or verdict-less it is a proper `unknown` envelope instead of the raw
+        // text, so the caller cannot mistake it for a retryable failure.
+        return actionGuard.afterCall(toolName, argumentsJson, callId, resultJson, round)
     }
 }

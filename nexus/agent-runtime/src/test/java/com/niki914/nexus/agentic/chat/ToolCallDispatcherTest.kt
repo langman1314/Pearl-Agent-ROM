@@ -481,10 +481,57 @@ class ToolCallDispatcherTest {
         }
     }
 
+    @Test
+    fun executeLocalTool_rawCompletionIsDedupedWhileUnreadablePayloadIsReportedAsUnknown() = runTest {
+        // A raw terminal completion: readable, so it keeps its own shape but must still be recorded
+        // under its call id — forgetting it is what lets the same command run twice.
+        val completed = RawPayloadBuiltinTool("terminal", """{"exit_code":0,"stdout":"done"}""")
+        val unreadable = RawPayloadBuiltinTool("terminal_broken", "{")
+        val later = RecordingBuiltinTool("gesture")
+        val dispatcher = ToolCallDispatcher(
+            builtinToolExecutor = BuiltinToolExecutor(
+                BuiltinToolRegistry(listOf(completed, unreadable, later))
+            ),
+            customToolExecutor = CustomToolExecutor(),
+            currentTools = {
+                ResolvedTools(
+                    builtinTools = listOf(
+                        LocalTool.Builtin("terminal", "Terminal", completed),
+                        LocalTool.Builtin("terminal_broken", "Broken", unreadable),
+                        LocalTool.Builtin("gesture", "Gesture", later),
+                    ),
+                )
+            },
+        )
+
+        val arguments = """{"action":"exec","session":"user","command":"echo harmless"}"""
+        val first = dispatcher.executeLocalTool("terminal", arguments, callId = "terminal-1")
+        assertEquals("""{"exit_code":0,"stdout":"done"}""", first)
+
+        // The same call id replays the recorded result; the tool is not invoked a second time.
+        val replayed = dispatcher.executeLocalTool("terminal", arguments, callId = "terminal-1")
+        assertEquals(first, replayed)
+
+        // A fresh call id is a different call, so it really executes.
+        dispatcher.executeLocalTool("terminal", arguments, callId = "terminal-2")
+
+        // An undecodable payload from a side-effecting call comes back as an unknown envelope, not
+        // as raw text a caller could mistake for a retryable failure.
+        val broken = dispatcher.executeLocalTool("terminal_broken", "{}", callId = "broken-1")
+        assertEquals("false", jsonField(broken, "ok"))
+        assertEquals("unknown", jsonField(broken, "outcome"))
+
+        // And the round is latched, so the next side effect is refused rather than dispatched.
+        val refusal = dispatcher.executeLocalTool("gesture", """{"start_x":1}""", callId = "call-9")
+        assertEquals("ACTION_STATE_INDETERMINATE", jsonField(refusal, "code"))
+        assertEquals(0, later.invocationCount)
+    }
+
     private fun jsonField(json: String, key: String): String =
         Json.parseToJsonElement(json).jsonObject[key]!!.jsonPrimitive.content
 
-    private fun dangerousRules(): List<ExecutionRule> {        return listOf(
+    private fun dangerousRules(): List<ExecutionRule> {
+        return listOf(
             ExecutionRule(
                 id = "dangerous-command",
                 name = "危险命令",

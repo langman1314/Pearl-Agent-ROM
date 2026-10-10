@@ -53,7 +53,11 @@ class ConversationFormatterTest {
                     content = "answer",
                     toolCalls = listOf(ToolCallSpec("call-1", "search", "{}")),
                 ),
-                ChatTurn.ToolResult(callId = "call-1", toolName = "search", resultJson = "{}"),
+                ChatTurn.ToolResult(
+                    callId = "call-1",
+                    toolName = "search",
+                    resultJson = """{"ok":true,"data":{"hits":3}}""",
+                ),
                 ChatTurn.User("next"),
             ),
         )
@@ -69,6 +73,75 @@ class ConversationFormatterTest {
         )
         assertEquals("next", turns[1].userText)
         assertEquals(emptyList<HomeChatBlock>(), turns[1].blocks)
+    }
+
+    @Test
+    fun toHomeTurns_neverShowsAnUnconfirmedOrEmptyResultAsSucceeded() {
+        val turns = ConversationFormatter.toHomeTurns(
+            listOf(
+                ChatTurn.User("question"),
+                ChatTurn.Assistant(
+                    content = "answer",
+                    toolCalls = listOf(
+                        ToolCallSpec("empty-call", "search", "{}"),
+                        ToolCallSpec("broken-call", "command", "{"),
+                        ToolCallSpec("unknown-call", "node_action", "{}"),
+                    ),
+                ),
+                ChatTurn.ToolResult(callId = "empty-call", toolName = "search", resultJson = "{}"),
+                ChatTurn.ToolResult(callId = "broken-call", toolName = "command", resultJson = "{"),
+                ChatTurn.ToolResult(
+                    callId = "unknown-call",
+                    toolName = "node_action",
+                    resultJson = """{"ok":false,"outcome":"unknown","message":"tap not confirmed"}""",
+                ),
+            ),
+        )
+
+        val toolStates = turns.single().blocks
+            .filterIsInstance<HomeChatBlock.Tool>()
+            .associate { it.status.callId to it.status.state }
+
+        // Nothing here proved a success, so none of them may be shown as one.
+        assertEquals(HomeToolState.Failed, toolStates["empty-call"])
+        assertEquals(HomeToolState.Failed, toolStates["broken-call"])
+        assertEquals(HomeToolState.Failed, toolStates["unknown-call"])
+    }
+
+    @Test
+    fun toHomeTurns_keepsConfirmedAndObservationResultsCompatible() {
+        val turns = ConversationFormatter.toHomeTurns(
+            listOf(
+                ChatTurn.User("question"),
+                ChatTurn.Assistant(
+                    content = "answer",
+                    toolCalls = listOf(
+                        ToolCallSpec("ok-call", "memory", "{}"),
+                        ToolCallSpec("legacy-call", "memory", "{}"),
+                        ToolCallSpec("observation-call", "screen_content", "{}"),
+                    ),
+                ),
+                ChatTurn.ToolResult(callId = "ok-call", toolName = "memory", resultJson = """{"ok":true}"""),
+                ChatTurn.ToolResult(
+                    callId = "legacy-call",
+                    toolName = "memory",
+                    resultJson = """{"ok":true,"code":"OK"}""",
+                ),
+                ChatTurn.ToolResult(
+                    callId = "observation-call",
+                    toolName = "screen_content",
+                    resultJson = "snapshot_id: 42\nnodes:\n  - text: 首页",
+                ),
+            ),
+        )
+
+        val toolStates = turns.single().blocks
+            .filterIsInstance<HomeChatBlock.Tool>()
+            .associate { it.status.callId to it.status.state }
+
+        assertEquals(HomeToolState.Succeeded, toolStates["ok-call"])
+        assertEquals(HomeToolState.Succeeded, toolStates["legacy-call"])
+        assertEquals(HomeToolState.Succeeded, toolStates["observation-call"])
     }
 
     @Test

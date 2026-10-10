@@ -2,6 +2,9 @@ package com.niki914.nexus.agentic.chat.agentic
 
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolResult
 import com.niki914.nexus.agentic.chat.agentic.buildin.ToolOutcome
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Tracks side-effecting tool calls inside a single agent round.
@@ -35,7 +38,8 @@ class RoundActionGuard {
     private data class Recorded(
         val toolName: String,
         val argumentsJson: String,
-        val outcome: ToolOutcome,
+        /** The decoded verdict, or null when the payload is not a Nexus envelope and claims none. */
+        val outcome: ToolOutcome?,
         val resultJson: String,
     )
 
@@ -114,9 +118,21 @@ class RoundActionGuard {
      * Records a finished call so the same call id is never dispatched twice, and latches the round
      * when the outcome could not be confirmed.
      *
-     * Only an explicitly decoded [ToolOutcome.UNKNOWN] latches. Raw payloads that are not Nexus
-     * envelopes (the YAML from `screen_content` / `search_nodes`, raw terminal output) are left
-     * alone — refusing to read the screen because of them would blind the agent.
+     * **Bookkeeping and decoding are separate questions.** A call that was actually dispatched is
+     * recorded under its call id whatever its payload looks like, because forgetting it is what
+     * makes a duplicate possible: a raw terminal completion (`{"exit_code":0,...}`) is not a Nexus
+     * envelope, yet it still proves that call happened and must not be dispatched again.
+     *
+     * **Latching asks the stronger question — did this prove anything?** A decoded
+     * [ToolOutcome.UNKNOWN] latches. So does a *dispatched side-effecting* call whose payload is
+     * empty, truncated, or carries no recognizable verdict: it cannot prove the action did not
+     * land, so it must not be replayed and must not be offered to the caller as a retryable
+     * failure. Raw payloads that are a readable completion — terminal results, session handles,
+     * async receipts, observation YAML — are left alone; refusing to read the screen because of
+     * them would blind the agent.
+     *
+     * Returns the result the caller should report, which for an unreadable side-effecting payload
+     * is a proper `unknown` envelope rather than the raw text.
      */
     fun afterCall(
         toolName: String,
@@ -124,24 +140,49 @@ class RoundActionGuard {
         callId: String?,
         resultJson: String,
         round: Int = generation,
-    ) = synchronized(lock) {
+    ): String = synchronized(lock) {
+        val readOnly = toolName in READ_ONLY_TOOLS
+        val decoded = BuiltinToolResult.fromJsonString(resultJson)
+        val unreadableSideEffect =
+            !readOnly && decoded == null && !claimsReadableCompletion(resultJson)
+        val outcome = when {
+            decoded != null -> decoded.outcome
+            unreadableSideEffect -> ToolOutcome.UNKNOWN
+            else -> null
+        }
+        // Whatever happens below, the caller must never be handed an unreadable payload as if it
+        // were a retryable failure: the guard and the reported result have to agree.
+        val reported = if (unreadableSideEffect) {
+            BuiltinToolResult.unknown(
+                message = "'$toolName' was dispatched but its result arrived empty, truncated, or " +
+                    "without a readable verdict, so its effect could not be confirmed.",
+                hint = "Re-read the screen with screen_content to see what actually happened, then " +
+                    "continue in a new round. " + BuiltinToolResult.OUTCOME_UNKNOWN_HINT,
+            ).toJsonString()
+        } else {
+            resultJson
+        }
+
         if (round != generation) {
             // Late result: its round is over, so its bookkeeping would describe a call this round
             // never made. The device fact it carries still counts.
-            if (BuiltinToolResult.fromJsonString(resultJson)?.outcome == ToolOutcome.UNKNOWN) {
+            if (outcome == ToolOutcome.UNKNOWN) {
                 latch(toolName, "'$toolName' went unconfirmed in the previous round")
             }
-            return@synchronized
+            return@synchronized reported
         }
-        val decoded = BuiltinToolResult.fromJsonString(resultJson)
-        if (decoded == null) return@synchronized
+
         val record = Recorded(
             toolName = toolName,
             argumentsJson = argumentsJson,
-            outcome = decoded.outcome,
+            outcome = outcome,
             resultJson = resultJson,
         )
-        if (toolName !in READ_ONLY_TOOLS) {
+        if (readOnly) {
+            // An observation ends the id-less replay window: whatever the agent does next is a new
+            // action, not a repeat of the call it made before looking at the screen.
+            lastIdlessCall = null
+        } else {
             val id = callId?.takeIf { it.isNotBlank() }
             if (id != null) {
                 recordedByCallId[id] = record
@@ -151,9 +192,33 @@ class RoundActionGuard {
                 lastIdlessCall = record
             }
         }
-        if (record.outcome == ToolOutcome.UNKNOWN) {
+        if (outcome == ToolOutcome.UNKNOWN) {
             latch(toolName, "'$toolName' returned an unconfirmed outcome")
         }
+
+        if (unreadableSideEffect) {
+            reported
+        } else {
+            resultJson
+        }
+    }
+
+    /**
+     * Does a non-envelope payload read as a *finished* call rather than an unknown one?
+     *
+     * This is deliberately a small allow-list, not "any non-empty JSON or text": a payload only
+     * counts when it carries something only a completed call could report. An async receipt
+     * (`accepted` / `async_id`) proves the work was *accepted*, not that it finished — it does not
+     * claim success, but it is a readable handoff, so it neither latches nor is rewritten. A
+     * refusal that happened before anything ran (`COMMAND_BLOCKED`, `SESSION_NOT_FOUND`, ...) is
+     * readable too: the caller may retry it with a fresh call id.
+     */
+    private fun claimsReadableCompletion(resultJson: String): Boolean {
+        val obj = runCatching { Json.parseToJsonElement(resultJson) as? JsonObject }.getOrNull()
+            ?: return false
+        val errorCode = ((obj["error"] as? JsonObject)?.get("code") as? JsonPrimitive)?.content
+        if (!errorCode.isNullOrBlank()) return errorCode.uppercase() in PRE_DISPATCH_REFUSAL_CODES
+        return RAW_COMPLETION_KEYS.any { obj.containsKey(it) }
     }
 
     /**
@@ -231,5 +296,37 @@ class RoundActionGuard {
          * re-observing is how the agent recovers.
          */
         val READ_ONLY_TOOLS = setOf("screen_content", "search_nodes")
+
+        /**
+         * Keys that only a *finished* non-envelope call reports.
+         *
+         * `exit_code` / `stdout` / `stderr` / `elapsed_seconds` are a terminal command completion;
+         * `session` / `identity` a session handle; `closed` a closed session; `snapshot_id` an
+         * observation snapshot. `accepted` and `async_id` are intentionally *absent*: an accepted
+         * receipt proves the work started, not that it finished, so it stays readable without being
+         * treated as a claim of success.
+         */
+        private val RAW_COMPLETION_KEYS = setOf(
+            "exit_code",
+            "stdout",
+            "stderr",
+            "elapsed_seconds",
+            "session",
+            "identity",
+            "closed",
+            "snapshot_id",
+        )
+
+        /**
+         * Error codes for a refusal that happened *before* anything was dispatched. Nothing reached
+         * the device, so the call is an ordinary retryable failure, not an indeterminate one.
+         */
+        private val PRE_DISPATCH_REFUSAL_CODES = setOf(
+            "COMMAND_BLOCKED",
+            "INVALID_REQUEST",
+            "SESSION_NOT_FOUND",
+            "ASYNC_NOT_FOUND",
+            "SESSION_BUSY",
+        )
     }
 }
