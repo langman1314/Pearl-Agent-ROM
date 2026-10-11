@@ -25,6 +25,28 @@ import kotlinx.coroutines.sync.Mutex
 import java.util.UUID
 import kotlin.random.Random
 
+/**
+ * A call opened its own terminal session, lost the handle to another call before it could register
+ * it, and then could not close that session again.
+ *
+ * The compensating close is the only thing that keeps a lost race from leaving a live session
+ * behind, and it has no result channel of its own: "it succeeded" can only ever mean "it did not
+ * throw". When it does fail, the call this belongs to must end instead of continuing, because the
+ * session it opened may still be running: reusing the winning call's session, or taking a fresh
+ * handle and opening again, would act through a session that was never confirmed and is not the one
+ * that was cleaned up.
+ *
+ * The message names the stage and the kind of failure, and deliberately carries neither the
+ * session handle nor the underlying message: close failures come from the runtime, where a message
+ * can embed a session id or a path. It is thrown out of the pool so the existing post-dispatch
+ * failure channel reports the call as unconfirmed — no new credential, no new result shape.
+ */
+class CompensatingCloseFailure(cause: Throwable) : Exception(
+    "The session opened for this call lost its handle to another call and could not be confirmed " +
+            "closed again (compensating close failed with ${cause.javaClass.simpleName}).",
+    cause,
+)
+
 object TerminalSessionPool {
     private const val CUSTOM_TOOL_SESSION = "__custom_user"
     private const val SSH_PUBLIC_IDENTITY = "ssh"
@@ -235,7 +257,26 @@ object TerminalSessionPool {
                     }
                 }
                 if (existing != null) {
-                    runCatching { holder.runtime.close(result.value.id) }
+                    // The handle was taken while this attempt was opening its own session, so the
+                    // session this attempt opened is not the one being reported and has to be closed
+                    // again. Only *that* session is touched; the entry that won the race is left
+                    // exactly as it is.
+                    //
+                    // "Closed" can only mean the close did not throw: the port returns no result, so
+                    // the compensating close has no channel of its own to report through. Folding a
+                    // failure away here would be the one thing this boundary must not do — the
+                    // attempt would go on to reuse the winner's session, or to pick a fresh handle
+                    // and open again, while the session it opened may still be live. So a failed or
+                    // unproven compensating close ends this attempt: the exception travels out as a
+                    // post-dispatch failure (the terminal callers already render that as
+                    // unconfirmed), and cancellation keeps travelling as cancellation.
+                    try {
+                        holder.runtime.close(result.value.id)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (error: Throwable) {
+                        throw CompensatingCloseFailure(error)
+                    }
                     if (reuseExisting) {
                         TerminalOpenOutcome.Success(
                             session = existing.handle,

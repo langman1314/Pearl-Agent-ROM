@@ -6,7 +6,13 @@ import com.niki914.libterm.SshOpenOptions
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinTool
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolRequest
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolResult
+import com.niki914.nexus.agentic.chat.agentic.buildin.DeclaredOperationProducing
+import com.niki914.nexus.agentic.chat.agentic.buildin.DispatchStage
 import com.niki914.nexus.agentic.chat.agentic.buildin.RawJsonBuiltinTool
+import com.niki914.nexus.agentic.chat.agentic.buildin.RawOutcomeProducing
+import com.niki914.nexus.agentic.chat.agentic.buildin.RawToolOutcome
+import com.niki914.nexus.agentic.chat.agentic.buildin.UNKNOWN_OPERATION
+import com.niki914.nexus.agentic.chat.agentic.buildin.rawOutcome
 import com.niki914.nexus.agentic.chat.agentic.shell.TerminalCloseOutcome
 import com.niki914.nexus.agentic.chat.agentic.shell.TerminalInteractiveReadMode
 import com.niki914.nexus.agentic.chat.agentic.shell.TerminalInteractiveReadOutcome
@@ -27,7 +33,8 @@ import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
-class SshTerminalBuiltin : BuiltinTool(), RawJsonBuiltinTool {
+class SshTerminalBuiltin : BuiltinTool(), RawJsonBuiltinTool, RawOutcomeProducing,
+    DeclaredOperationProducing {
     override val name: String = "ssh_terminal"
 
     override val description: String =
@@ -53,8 +60,33 @@ class SshTerminalBuiltin : BuiltinTool(), RawJsonBuiltinTool {
     }
 
     override suspend fun invokeRawJson(request: BuiltinToolRequest): String {
+        return invokeRawJsonWithEvidence(request).resultJson
+    }
+
+    /**
+     * The real exit path, with the stage each branch can actually prove.
+     *
+     * SSH cannot report command completion at all, so every write-shaped exit stays unconfirmed: a
+     * receipt saying the bytes reached the terminal's input is not a command result. Only the
+     * validation region before the first pool call may claim nothing was dispatched.
+     */
+    override suspend fun invokeRawJsonWithEvidence(
+        request: BuiltinToolRequest,
+    ): RawToolOutcome {
+        val args = try {
+            parseArguments(request.argumentsJson)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            return refusal(
+                operation = UNKNOWN_OPERATION,
+                json = TerminalToolResponse.invalidRequest(
+                    (error as? IllegalArgumentException)?.message ?: "Invalid ssh_terminal request."
+                ),
+            )
+        }
+
         return try {
-            val args = parseArguments(request.argumentsJson)
             when (args.action) {
                 SshTerminalAction.OPEN -> handleOpen(args)
                 SshTerminalAction.SEND_LINE -> handleWrite(args, appendNewline = true)
@@ -65,80 +97,154 @@ class SshTerminalBuiltin : BuiltinTool(), RawJsonBuiltinTool {
             }
         } catch (error: CancellationException) {
             throw error
-        } catch (error: IllegalArgumentException) {
-            TerminalToolResponse.invalidRequest(error.message ?: "Invalid ssh_terminal request.")
         } catch (error: Throwable) {
-            TerminalToolResponse.internalError(error)
+            unconfirmed(
+                operation = args.action.operation,
+                json = TerminalToolResponse.internalError(error),
+            )
         }
     }
 
-    private suspend fun handleOpen(args: SshTerminalToolArgs): String {
-        val sshOptions = args.requireOpenOptions()
-        return when (val outcome =
-            TerminalSessionPool.openSsh(options = sshOptions, cwd = args.cwd)) {
-            is TerminalOpenOutcome.Success -> TerminalToolResponse.openSuccess(
-                session = outcome.session,
-                identity = outcome.identity,
-            )
+    /**
+     * The operation this request asked for, read with the same rules the handler uses: the same
+     * accepted `action` values and the same case/whitespace tolerance, and nothing else. A request
+     * this version cannot read declares nothing, which constrains no credential — an unparseable
+     * request must not turn a real completion into a false unknown.
+     */
+    override fun declaredOperation(argumentsJson: String): String? {
+        return runCatching { parseArguments(argumentsJson).action.operation }.getOrNull()
+    }
 
-            is TerminalOpenOutcome.Failure -> TerminalToolResponse.failure(
-                failure = outcome.failure,
-                elapsedSeconds = outcome.elapsedSeconds,
-                identity = SSH_PUBLIC_IDENTITY,
-            )
+    private suspend fun handleOpen(args: SshTerminalToolArgs): RawToolOutcome {
+        val sshOptions: SshOpenOptions
+        try {
+            sshOptions = args.requireOpenOptions()
+        } catch (error: IllegalArgumentException) {
+            return refusal(OPEN, invalidRequestJson(error))
+        }
 
-            is TerminalOpenOutcome.InvalidRequest -> TerminalToolResponse.invalidRequest(outcome.message)
+        return dispatch(OPEN) {
+            when (val outcome =
+                TerminalSessionPool.openSsh(options = sshOptions, cwd = args.cwd)) {
+                is TerminalOpenOutcome.Success -> decided(
+                    operation = OPEN,
+                    json = TerminalToolResponse.openSuccess(
+                        session = outcome.session,
+                        identity = outcome.identity,
+                    ),
+                )
+
+                is TerminalOpenOutcome.Failure -> unconfirmed(
+                    operation = OPEN,
+                    json = TerminalToolResponse.failure(
+                        failure = outcome.failure,
+                        elapsedSeconds = outcome.elapsedSeconds,
+                        identity = SSH_PUBLIC_IDENTITY,
+                    ),
+                )
+
+                is TerminalOpenOutcome.InvalidRequest -> unconfirmed(
+                    operation = OPEN,
+                    json = TerminalToolResponse.invalidRequest(outcome.message),
+                )
+            }
         }
     }
 
-    private suspend fun handleWrite(args: SshTerminalToolArgs, appendNewline: Boolean): String {
-        val session = args.requireSession()
-        val text = args.requireText()
+    private suspend fun handleWrite(
+        args: SshTerminalToolArgs,
+        appendNewline: Boolean,
+    ): RawToolOutcome {
+        val session: String
+        val text: String
+        try {
+            session = args.requireSession()
+            text = args.requireText()
+        } catch (error: IllegalArgumentException) {
+            return refusal(args.action.operation, invalidRequestJson(error))
+        }
         val payload = if (appendNewline) "$text\n" else text
-        return writePayload(session = session, payload = payload, requestId = args.requestId)
+        return writePayload(
+            operation = args.action.operation,
+            session = session,
+            payload = payload,
+            requestId = args.requestId,
+        )
     }
 
-    private suspend fun handleInterrupt(args: SshTerminalToolArgs): String {
-        val session = args.requireSession()
-        return writePayload(session = session, payload = CTRL_C, requestId = args.requestId)
+    private suspend fun handleInterrupt(args: SshTerminalToolArgs): RawToolOutcome {
+        val session: String
+        try {
+            session = args.requireSession()
+        } catch (error: IllegalArgumentException) {
+            return refusal(INTERRUPT, invalidRequestJson(error))
+        }
+        return writePayload(
+            operation = INTERRUPT,
+            session = session,
+            payload = CTRL_C,
+            requestId = args.requestId,
+        )
     }
 
-    private suspend fun writePayload(session: String, payload: String, requestId: String?): String {
-        return when (val outcome = TerminalSessionPool.writeInteractive(
+    private suspend fun writePayload(
+        operation: String,
+        session: String,
+        payload: String,
+        requestId: String?,
+    ): RawToolOutcome = dispatch(operation) {
+        when (val outcome = TerminalSessionPool.writeInteractive(
             session = session,
             text = payload,
             requestId = requestId,
         )) {
-            is TerminalInteractiveWriteOutcome.Accepted -> JsonObject(
-                mapOf(
-                    "accepted" to JsonPrimitive(true),
-                    "bytes_written" to JsonPrimitive(outcome.bytesWritten),
-                    "sequence" to JsonPrimitive(outcome.sequence),
-                    "replayed" to JsonPrimitive(outcome.replayed),
-                )
-            ).toString()
-
-            is TerminalInteractiveWriteOutcome.SessionNotFound -> TerminalToolResponse.sessionNotFound(
-                outcome.session
+            // The receipt proves the *write*, and an interactive terminal tells us nothing about
+            // whether the command it started finished. `bytes_written`/`sequence`/`replayed` stay
+            // readable in the unknown envelope; acceptance is never a completion.
+            is TerminalInteractiveWriteOutcome.Accepted -> unconfirmed(
+                operation = operation,
+                json = JsonObject(
+                    mapOf(
+                        "accepted" to JsonPrimitive(true),
+                        "bytes_written" to JsonPrimitive(outcome.bytesWritten),
+                        "sequence" to JsonPrimitive(outcome.sequence),
+                        "replayed" to JsonPrimitive(outcome.replayed),
+                    )
+                ).toString(),
             )
 
-            is TerminalInteractiveWriteOutcome.NotInteractive -> TerminalToolResponse.invalidRequest(
-                "Session '${outcome.session}' is not an interactive SSH terminal."
+            // A write to a session that does not exist is refused before any input is handed over.
+            is TerminalInteractiveWriteOutcome.SessionNotFound -> refusal(
+                operation = operation,
+                json = TerminalToolResponse.sessionNotFound(outcome.session),
             )
 
-            is TerminalInteractiveWriteOutcome.Busy -> TerminalToolResponse.sessionBusy(
-                outcome.session,
-                asyncId = null
+            is TerminalInteractiveWriteOutcome.NotInteractive -> refusal(
+                operation = operation,
+                json = TerminalToolResponse.invalidRequest(
+                    "Session '${outcome.session}' is not an interactive SSH terminal."
+                ),
             )
 
-            is TerminalInteractiveWriteOutcome.UnexpectedError -> TerminalToolResponse.internalError(
-                outcome.throwable
+            is TerminalInteractiveWriteOutcome.Busy -> refusal(
+                operation = operation,
+                json = TerminalToolResponse.sessionBusy(outcome.session, asyncId = null),
+            )
+
+            is TerminalInteractiveWriteOutcome.UnexpectedError -> unconfirmed(
+                operation = operation,
+                json = TerminalToolResponse.internalError(outcome.throwable),
             )
         }
     }
 
-    private fun handleRead(args: SshTerminalToolArgs): String {
-        val session = args.requireSession()
+    private fun handleRead(args: SshTerminalToolArgs): RawToolOutcome {
+        val session: String
+        try {
+            session = args.requireSession()
+        } catch (error: IllegalArgumentException) {
+            return refusal(READ, invalidRequestJson(error))
+        }
         val mode = args.readMode ?: TerminalInteractiveReadMode.DELTA
         val maxBytes = args.maxBytes ?: DEFAULT_MAX_BYTES
         return when (val outcome = TerminalSessionPool.readInteractive(
@@ -146,33 +252,80 @@ class SshTerminalBuiltin : BuiltinTool(), RawJsonBuiltinTool {
             mode = mode,
             maxBytes = maxBytes,
         )) {
-            is TerminalInteractiveReadOutcome.Success -> JsonObject(
-                mapOf(
-                    "stdout" to JsonPrimitive(outcome.stdout),
-                    "stderr" to JsonPrimitive(outcome.stderr),
-                    "mode" to JsonPrimitive(outcome.mode.wireName),
-                    "sequence" to JsonPrimitive(outcome.sequence),
-                    "truncated" to JsonPrimitive(outcome.truncated),
+            // Reading the terminal's output buffer is a decided observation of what it holds now.
+            is TerminalInteractiveReadOutcome.Success -> decided(
+                operation = READ,
+                json = JsonObject(
+                    mapOf(
+                        "stdout" to JsonPrimitive(outcome.stdout),
+                        "stderr" to JsonPrimitive(outcome.stderr),
+                        "mode" to JsonPrimitive(outcome.mode.wireName),
+                        "sequence" to JsonPrimitive(outcome.sequence),
+                        "truncated" to JsonPrimitive(outcome.truncated),
+                    )
+                ).toString(),
+            )
+
+            is TerminalInteractiveReadOutcome.SessionNotFound -> refusal(
+                operation = READ,
+                json = TerminalToolResponse.sessionNotFound(outcome.session),
+            )
+
+            is TerminalInteractiveReadOutcome.NotInteractive -> refusal(
+                operation = READ,
+                json = TerminalToolResponse.invalidRequest(
+                    "Session '${outcome.session}' is not an interactive SSH terminal."
+                ),
+            )
+        }
+    }
+
+    private suspend fun handleClose(args: SshTerminalToolArgs): RawToolOutcome {
+        val session: String
+        try {
+            session = args.requireSession()
+        } catch (error: IllegalArgumentException) {
+            return refusal(CLOSE, invalidRequestJson(error))
+        }
+        return dispatch(CLOSE) {
+            when (val outcome = TerminalSessionPool.close(session = session)) {
+                // Including the no-op close of a session that is already gone: the call changed
+                // nothing, so the close really did succeed.
+                TerminalCloseOutcome.Closed -> decided(CLOSE, TerminalToolResponse.closeSuccess())
+                is TerminalCloseOutcome.UnexpectedError -> unconfirmed(
+                    operation = CLOSE,
+                    json = TerminalToolResponse.internalError(outcome.throwable),
                 )
-            ).toString()
-
-            is TerminalInteractiveReadOutcome.SessionNotFound -> TerminalToolResponse.sessionNotFound(
-                outcome.session
-            )
-
-            is TerminalInteractiveReadOutcome.NotInteractive -> TerminalToolResponse.invalidRequest(
-                "Session '${outcome.session}' is not an interactive SSH terminal."
-            )
+            }
         }
     }
 
-    private suspend fun handleClose(args: SshTerminalToolArgs): String {
-        val session = args.requireSession()
-        return when (val outcome = TerminalSessionPool.close(session = session)) {
-            TerminalCloseOutcome.Closed -> TerminalToolResponse.closeSuccess()
-            is TerminalCloseOutcome.UnexpectedError -> TerminalToolResponse.internalError(outcome.throwable)
-        }
+    /** A rejection proven to have happened before the first pool call. */
+    private fun refusal(operation: String, json: String) =
+        rawOutcome(operation = operation, stage = DispatchStage.NOT_DISPATCHED, json = json)
+
+    /** A pool verdict this exit can rely on. */
+    private fun decided(operation: String, json: String) =
+        rawOutcome(operation = operation, stage = DispatchStage.DISPATCHED_CONFIRMED, json = json)
+
+    /** The operation reached the pool and produced no verdict this exit can rely on. */
+    private fun unconfirmed(operation: String, json: String) =
+        rawOutcome(operation = operation, stage = DispatchStage.DISPATCHED_UNCONFIRMED, json = json)
+
+    /** Runs the pool-call region; a throw there is post-dispatch and never retryable. */
+    private suspend fun dispatch(
+        operation: String,
+        block: suspend () -> RawToolOutcome,
+    ): RawToolOutcome = try {
+        block()
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Throwable) {
+        unconfirmed(operation, TerminalToolResponse.internalError(error))
     }
+
+    private fun invalidRequestJson(error: IllegalArgumentException): String =
+        TerminalToolResponse.invalidRequest(error.message ?: "Invalid ssh_terminal request.")
 
     private fun parseArguments(argumentsJson: String): SshTerminalToolArgs {
         val element = try {
@@ -351,6 +504,9 @@ class SshTerminalBuiltin : BuiltinTool(), RawJsonBuiltinTool {
         CLOSE("close"),
         ;
 
+        /** The operation name this action binds its evidence to. */
+        val operation: String get() = wireName
+
         companion object {
             fun from(raw: String?): SshTerminalAction {
                 return when (raw?.trim()?.lowercase()) {
@@ -373,6 +529,13 @@ class SshTerminalBuiltin : BuiltinTool(), RawJsonBuiltinTool {
         private const val DEFAULT_MAX_BYTES = 8192
         private const val CTRL_C = "\u0003"
         private const val SSH_PUBLIC_IDENTITY = "ssh"
+
+        // The operation names carried as dispatch evidence, taken from the same wire names the
+        // request uses so the evidence and the parsed request cannot describe different operations.
+        private val OPEN = SshTerminalAction.OPEN.wireName
+        private val INTERRUPT = SshTerminalAction.INTERRUPT.wireName
+        private val READ = SshTerminalAction.READ.wireName
+        private val CLOSE = SshTerminalAction.CLOSE.wireName
         private const val HOST_KEY_POLICY_ACCEPT_ANY = "accept_any"
         private const val HOST_KEY_POLICY_KNOWN_HOSTS_FILE = "known_hosts_file"
         private val REQUEST_KEYS = setOf(

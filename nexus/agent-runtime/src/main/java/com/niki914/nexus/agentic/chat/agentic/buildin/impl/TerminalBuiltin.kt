@@ -3,7 +3,13 @@ package com.niki914.nexus.agentic.chat.agentic.buildin.impl
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinTool
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolRequest
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolResult
+import com.niki914.nexus.agentic.chat.agentic.buildin.DeclaredOperationProducing
+import com.niki914.nexus.agentic.chat.agentic.buildin.DispatchStage
 import com.niki914.nexus.agentic.chat.agentic.buildin.RawJsonBuiltinTool
+import com.niki914.nexus.agentic.chat.agentic.buildin.RawOutcomeProducing
+import com.niki914.nexus.agentic.chat.agentic.buildin.RawToolOutcome
+import com.niki914.nexus.agentic.chat.agentic.buildin.UNKNOWN_OPERATION
+import com.niki914.nexus.agentic.chat.agentic.buildin.rawOutcome
 import com.niki914.nexus.agentic.chat.agentic.shell.ShellCommandSafetyPolicy
 import com.niki914.nexus.agentic.chat.agentic.shell.TerminalAsyncReadOutcome
 import com.niki914.nexus.agentic.chat.agentic.shell.TerminalAsyncStartOutcome
@@ -27,7 +33,7 @@ import kotlinx.serialization.json.longOrNull
 
 class TerminalBuiltin(
     private val safetyPolicy: ShellCommandSafetyPolicy = ShellCommandSafetyPolicy(),
-) : BuiltinTool(), RawJsonBuiltinTool {
+) : BuiltinTool(), RawJsonBuiltinTool, RawOutcomeProducing, DeclaredOperationProducing {
     override val name: String = "terminal"
 
     override val description: String =
@@ -56,8 +62,35 @@ class TerminalBuiltin(
     }
 
     override suspend fun invokeRawJson(request: BuiltinToolRequest): String {
+        return invokeRawJsonWithEvidence(request).resultJson
+    }
+
+    /**
+     * The real exit path: each branch reports what it can prove about the stage it reached.
+     *
+     * The split that carries the safety is between *validation* and *execution*. Parsing the request,
+     * `requireX` and the policy check all sit before the handler's first pool call, so a rejection
+     * there is the only thing that may claim nothing was dispatched. Everything from the first pool
+     * call onwards reports the pool's own verdict, and anything thrown there is unconfirmed — never
+     * downgraded to a retryable failure because of its class name.
+     */
+    override suspend fun invokeRawJsonWithEvidence(
+        request: BuiltinToolRequest,
+    ): RawToolOutcome {
+        val args = try {
+            parseArguments(request.argumentsJson)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            return refusal(
+                operation = UNKNOWN_OPERATION,
+                json = TerminalToolResponse.invalidRequest(
+                    (error as? IllegalArgumentException)?.message ?: "Invalid terminal request."
+                ),
+            )
+        }
+
         return try {
-            val args = parseArguments(request.argumentsJson)
             when (args.action) {
                 TerminalAction.OPEN -> handleOpen(args)
                 TerminalAction.OPEN_AND_EXEC -> handleOpenAndExec(args)
@@ -67,219 +100,367 @@ class TerminalBuiltin(
             }
         } catch (error: CancellationException) {
             throw error
-        } catch (error: IllegalArgumentException) {
-            TerminalToolResponse.invalidRequest(error.message ?: "Invalid terminal request.")
         } catch (error: Throwable) {
-            TerminalToolResponse.internalError(error)
+            // Reached without the handler having claimed a stage, so the operation may well have been
+            // handed to the pool: unconfirmed, not a retryable failure.
+            unconfirmed(
+                operation = args.action.operation,
+                json = TerminalToolResponse.internalError(error),
+            )
         }
     }
 
-    private suspend fun handleOpen(args: TerminalToolArgs): String {
-        val identity = args.requireIdentity()
-        return when (val outcome = TerminalSessionPool.open(identity = identity, cwd = args.cwd)) {
-            is TerminalOpenOutcome.Success -> TerminalToolResponse.openSuccess(
-                session = outcome.session,
-                identity = outcome.identity,
-            )
+    private suspend fun handleOpen(args: TerminalToolArgs): RawToolOutcome {
+        val identity: String
+        try {
+            identity = args.requireIdentity()
+        } catch (error: IllegalArgumentException) {
+            return refusal(OPEN, invalidRequestJson(error))
+        }
 
-            is TerminalOpenOutcome.Failure -> TerminalToolResponse.failure(
-                failure = outcome.failure,
-                elapsedSeconds = outcome.elapsedSeconds,
+        return dispatch(OPEN) {
+            when (val outcome = TerminalSessionPool.open(identity = identity, cwd = args.cwd)) {
+                is TerminalOpenOutcome.Success -> decided(
+                    operation = OPEN,
+                    json = TerminalToolResponse.openSuccess(
+                        session = outcome.session,
+                        identity = outcome.identity,
+                    ),
+                )
+
+                is TerminalOpenOutcome.Failure -> unconfirmed(
+                    operation = OPEN,
+                    json = TerminalToolResponse.failure(
+                        failure = outcome.failure,
+                        elapsedSeconds = outcome.elapsedSeconds,
+                        identity = identity,
+                    ),
+                )
+
+                // Pool-sourced: the same exit also covers a handle collision that already opened a
+                // session and compensating-closed it, so it cannot claim nothing was dispatched.
+                is TerminalOpenOutcome.InvalidRequest -> unconfirmed(
+                    operation = OPEN,
+                    json = TerminalToolResponse.invalidRequest(outcome.message),
+                )
+            }
+        }
+    }
+
+    private suspend fun handleOpenAndExec(args: TerminalToolArgs): RawToolOutcome {
+        val identity: String
+        val command: String
+        val timeoutMs: Long
+        try {
+            identity = args.requireIdentity()
+            command = args.requireCommand()
+            timeoutMs = args.timeoutMs ?: DEFAULT_TIMEOUT_MS
+        } catch (error: IllegalArgumentException) {
+            return refusal(OPEN_AND_EXEC, invalidRequestJson(error))
+        }
+        val decision = safetyPolicy.evaluate(command)
+        if (!decision.allowed) {
+            return refusal(OPEN_AND_EXEC, TerminalToolResponse.policyBlocked(decision))
+        }
+
+        return dispatch(OPEN_AND_EXEC) {
+            when (val outcome = TerminalSessionPool.openAndExecute(
                 identity = identity,
-            )
-
-            is TerminalOpenOutcome.InvalidRequest -> TerminalToolResponse.invalidRequest(outcome.message)
-        }
-    }
-
-    private suspend fun handleOpenAndExec(args: TerminalToolArgs): String {
-        val identity = args.requireIdentity()
-        val command = args.requireCommand()
-        val timeoutMs = args.timeoutMs ?: DEFAULT_TIMEOUT_MS
-        val decision = safetyPolicy.evaluate(command)
-        if (!decision.allowed) {
-            return TerminalToolResponse.policyBlocked(decision)
-        }
-
-        return when (val outcome = TerminalSessionPool.openAndExecute(
-            identity = identity,
-            cwd = args.cwd,
-            command = command,
-            timeoutMs = timeoutMs,
-        )) {
-            is TerminalCommandOutcome.Success -> TerminalToolResponse.commandSuccess(
-                result = outcome.result,
-                elapsedSeconds = outcome.elapsedSeconds,
-                session = outcome.session,
-                identity = outcome.identity,
-                mergeStderr = args.mergeStderr,
-            )
-
-            is TerminalCommandOutcome.Timeout -> TerminalToolResponse.commandTimeout(
-                result = outcome.result,
-                elapsedSeconds = outcome.elapsedSeconds,
-                timeoutMs = timeoutMs,
-                session = outcome.session,
-                identity = outcome.identity,
-                mergeStderr = args.mergeStderr,
-            )
-
-            is TerminalCommandOutcome.Failure -> TerminalToolResponse.failure(
-                failure = outcome.failure,
-                elapsedSeconds = outcome.elapsedSeconds,
-                session = outcome.session,
-                identity = outcome.identity,
-            )
-
-            is TerminalCommandOutcome.SessionNotFound -> TerminalToolResponse.sessionNotFound(
-                outcome.session
-            )
-
-            is TerminalCommandOutcome.Busy -> TerminalToolResponse.sessionBusy(
-                outcome.session,
-                outcome.asyncId
-            )
-
-            is TerminalCommandOutcome.UnexpectedError -> TerminalToolResponse.internalError(
-                throwable = outcome.throwable,
-                elapsedSeconds = outcome.elapsedSeconds,
-            )
-        }
-    }
-
-    private suspend fun handleExec(args: TerminalToolArgs): String {
-        val session = args.requireSession()
-        val command = args.requireCommand()
-        val timeoutMs = args.timeoutMs ?: DEFAULT_TIMEOUT_MS
-        val decision = safetyPolicy.evaluate(command)
-        if (!decision.allowed) {
-            return TerminalToolResponse.policyBlocked(decision)
-        }
-
-        return if (args.isAsync) {
-            when (val outcome = TerminalSessionPool.startAsync(
-                session = session,
+                cwd = args.cwd,
                 command = command,
                 timeoutMs = timeoutMs,
             )) {
-                is TerminalAsyncStartOutcome.Accepted -> TerminalToolResponse.asyncAccepted(
-                    asyncId = outcome.asyncId,
-                    elapsedSeconds = outcome.elapsedSeconds,
+                is TerminalCommandOutcome.Success -> decided(
+                    operation = OPEN_AND_EXEC,
+                    json = TerminalToolResponse.commandSuccess(
+                        result = outcome.result,
+                        elapsedSeconds = outcome.elapsedSeconds,
+                        session = outcome.session,
+                        identity = outcome.identity,
+                        mergeStderr = args.mergeStderr,
+                    ),
                 )
 
-                is TerminalAsyncStartOutcome.SessionNotFound -> TerminalToolResponse.sessionNotFound(
-                    outcome.session
+                is TerminalCommandOutcome.Timeout -> unconfirmed(
+                    operation = OPEN_AND_EXEC,
+                    json = TerminalToolResponse.commandTimeout(
+                        result = outcome.result,
+                        elapsedSeconds = outcome.elapsedSeconds,
+                        timeoutMs = timeoutMs,
+                        session = outcome.session,
+                        identity = outcome.identity,
+                        mergeStderr = args.mergeStderr,
+                    ),
                 )
 
-                is TerminalAsyncStartOutcome.Busy -> TerminalToolResponse.sessionBusy(
-                    outcome.session,
-                    outcome.asyncId
+                is TerminalCommandOutcome.Failure -> unconfirmed(
+                    operation = OPEN_AND_EXEC,
+                    json = TerminalToolResponse.failure(
+                        failure = outcome.failure,
+                        elapsedSeconds = outcome.elapsedSeconds,
+                        session = outcome.session,
+                        identity = outcome.identity,
+                    ),
                 )
 
-                is TerminalAsyncStartOutcome.InvalidRequest -> TerminalToolResponse.invalidRequest(
-                    outcome.message
+                // The open had already happened by the time this came back, so a lookup or lock that
+                // fails on the second step of a composite call does not prove the call never ran.
+                is TerminalCommandOutcome.SessionNotFound -> unconfirmed(
+                    operation = OPEN_AND_EXEC,
+                    json = TerminalToolResponse.sessionNotFound(outcome.session),
+                )
+
+                is TerminalCommandOutcome.Busy -> unconfirmed(
+                    operation = OPEN_AND_EXEC,
+                    json = TerminalToolResponse.sessionBusy(outcome.session, outcome.asyncId),
+                )
+
+                is TerminalCommandOutcome.UnexpectedError -> unconfirmed(
+                    operation = OPEN_AND_EXEC,
+                    json = TerminalToolResponse.internalError(
+                        throwable = outcome.throwable,
+                        elapsedSeconds = outcome.elapsedSeconds,
+                    ),
                 )
             }
-        } else {
-            when (val outcome = TerminalSessionPool.executeBlocking(
-                session = session,
-                command = command,
-                timeoutMs = timeoutMs,
-            )) {
-                is TerminalCommandOutcome.Success -> TerminalToolResponse.commandSuccess(
-                    result = outcome.result,
-                    elapsedSeconds = outcome.elapsedSeconds,
-                    session = outcome.session,
-                    identity = outcome.identity,
-                    mergeStderr = args.mergeStderr,
-                )
+        }
+    }
 
-                is TerminalCommandOutcome.Timeout -> TerminalToolResponse.commandTimeout(
-                    result = outcome.result,
-                    elapsedSeconds = outcome.elapsedSeconds,
+    private suspend fun handleExec(args: TerminalToolArgs): RawToolOutcome {
+        val session: String
+        val command: String
+        val timeoutMs: Long
+        try {
+            session = args.requireSession()
+            command = args.requireCommand()
+            timeoutMs = args.timeoutMs ?: DEFAULT_TIMEOUT_MS
+        } catch (error: IllegalArgumentException) {
+            return refusal(EXEC, invalidRequestJson(error))
+        }
+        val decision = safetyPolicy.evaluate(command)
+        if (!decision.allowed) {
+            return refusal(EXEC, TerminalToolResponse.policyBlocked(decision))
+        }
+
+        return dispatch(EXEC) {
+            if (args.isAsync) {
+                when (val outcome = TerminalSessionPool.startAsync(
+                    session = session,
+                    command = command,
                     timeoutMs = timeoutMs,
-                    session = outcome.session,
-                    identity = outcome.identity,
-                    mergeStderr = args.mergeStderr,
+                )) {
+                    // Accepted means the command was handed over, not that it finished.
+                    is TerminalAsyncStartOutcome.Accepted -> unconfirmed(
+                        operation = EXEC,
+                        json = TerminalToolResponse.asyncAccepted(
+                            asyncId = outcome.asyncId,
+                            elapsedSeconds = outcome.elapsedSeconds,
+                        ),
+                    )
+
+                    is TerminalAsyncStartOutcome.SessionNotFound -> refusal(
+                        operation = EXEC,
+                        json = TerminalToolResponse.sessionNotFound(outcome.session),
+                    )
+
+                    is TerminalAsyncStartOutcome.Busy -> refusal(
+                        operation = EXEC,
+                        json = TerminalToolResponse.sessionBusy(outcome.session, outcome.asyncId),
+                    )
+
+                    is TerminalAsyncStartOutcome.InvalidRequest -> unconfirmed(
+                        operation = EXEC,
+                        json = TerminalToolResponse.invalidRequest(outcome.message),
+                    )
+                }
+            } else {
+                when (val outcome = TerminalSessionPool.executeBlocking(
+                    session = session,
+                    command = command,
+                    timeoutMs = timeoutMs,
+                )) {
+                    is TerminalCommandOutcome.Success -> decided(
+                        operation = EXEC,
+                        json = TerminalToolResponse.commandSuccess(
+                            result = outcome.result,
+                            elapsedSeconds = outcome.elapsedSeconds,
+                            session = outcome.session,
+                            identity = outcome.identity,
+                            mergeStderr = args.mergeStderr,
+                        ),
+                    )
+
+                    is TerminalCommandOutcome.Timeout -> unconfirmed(
+                        operation = EXEC,
+                        json = TerminalToolResponse.commandTimeout(
+                            result = outcome.result,
+                            elapsedSeconds = outcome.elapsedSeconds,
+                            timeoutMs = timeoutMs,
+                            session = outcome.session,
+                            identity = outcome.identity,
+                            mergeStderr = args.mergeStderr,
+                        ),
+                    )
+
+                    is TerminalCommandOutcome.Failure -> unconfirmed(
+                        operation = EXEC,
+                        json = TerminalToolResponse.failure(
+                            failure = outcome.failure,
+                            elapsedSeconds = outcome.elapsedSeconds,
+                            session = outcome.session,
+                            identity = outcome.identity,
+                        ),
+                    )
+
+                    // A standalone exec fails its own session lookup or lock before any command is
+                    // handed over, so nothing was dispatched.
+                    is TerminalCommandOutcome.SessionNotFound -> refusal(
+                        operation = EXEC,
+                        json = TerminalToolResponse.sessionNotFound(outcome.session),
+                    )
+
+                    is TerminalCommandOutcome.Busy -> refusal(
+                        operation = EXEC,
+                        json = TerminalToolResponse.sessionBusy(outcome.session, outcome.asyncId),
+                    )
+
+                    is TerminalCommandOutcome.UnexpectedError -> unconfirmed(
+                        operation = EXEC,
+                        json = TerminalToolResponse.internalError(
+                            throwable = outcome.throwable,
+                            elapsedSeconds = outcome.elapsedSeconds,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    private suspend fun handleReadAsyncResult(args: TerminalToolArgs): RawToolOutcome {
+        val session: String
+        val asyncId: String
+        try {
+            session = args.requireSession()
+            asyncId = args.requireAsyncId()
+        } catch (error: IllegalArgumentException) {
+            return refusal(READ_ASYNC_RESULT, invalidRequestJson(error))
+        }
+
+        return dispatch(READ_ASYNC_RESULT) {
+            when (val outcome =
+                TerminalSessionPool.readAsyncResult(session = session, asyncId = asyncId)) {
+                is TerminalAsyncReadOutcome.Running -> unconfirmed(
+                    operation = READ_ASYNC_RESULT,
+                    json = TerminalToolResponse.asyncRunning(
+                        stdoutPartial = outcome.stdoutPartial,
+                        stderrPartial = outcome.stderrPartial,
+                        elapsedSeconds = outcome.elapsedSeconds,
+                    ),
                 )
 
-                is TerminalCommandOutcome.Failure -> TerminalToolResponse.failure(
-                    failure = outcome.failure,
-                    elapsedSeconds = outcome.elapsedSeconds,
-                    session = outcome.session,
-                    identity = outcome.identity,
+                is TerminalAsyncReadOutcome.Completed -> decided(
+                    operation = READ_ASYNC_RESULT,
+                    json = TerminalToolResponse.commandSuccess(
+                        result = outcome.result,
+                        elapsedSeconds = outcome.elapsedSeconds,
+                        mergeStderr = args.mergeStderr,
+                    ),
                 )
 
-                is TerminalCommandOutcome.SessionNotFound -> TerminalToolResponse.sessionNotFound(
-                    outcome.session
+                is TerminalAsyncReadOutcome.TimedOut -> unconfirmed(
+                    operation = READ_ASYNC_RESULT,
+                    json = TerminalToolResponse.commandTimeout(
+                        result = outcome.result,
+                        elapsedSeconds = outcome.elapsedSeconds,
+                        timeoutMs = args.timeoutMs ?: DEFAULT_TIMEOUT_MS,
+                        mergeStderr = args.mergeStderr,
+                    ),
                 )
 
-                is TerminalCommandOutcome.Busy -> TerminalToolResponse.sessionBusy(
-                    outcome.session,
-                    outcome.asyncId
+                is TerminalAsyncReadOutcome.Failure -> unconfirmed(
+                    operation = READ_ASYNC_RESULT,
+                    json = TerminalToolResponse.failure(
+                        failure = outcome.failure,
+                        elapsedSeconds = outcome.elapsedSeconds,
+                        session = session,
+                    ),
                 )
 
-                is TerminalCommandOutcome.UnexpectedError -> TerminalToolResponse.internalError(
-                    throwable = outcome.throwable,
-                    elapsedSeconds = outcome.elapsedSeconds,
+                is TerminalAsyncReadOutcome.AsyncNotFound -> refusal(
+                    operation = READ_ASYNC_RESULT,
+                    json = TerminalToolResponse.asyncNotFound(
+                        session = outcome.session,
+                        asyncId = outcome.asyncId,
+                    ),
+                )
+
+                is TerminalAsyncReadOutcome.SessionNotFound -> refusal(
+                    operation = READ_ASYNC_RESULT,
+                    json = TerminalToolResponse.sessionNotFound(outcome.session),
+                )
+
+                is TerminalAsyncReadOutcome.UnexpectedError -> unconfirmed(
+                    operation = READ_ASYNC_RESULT,
+                    json = TerminalToolResponse.internalError(
+                        throwable = outcome.throwable,
+                        elapsedSeconds = outcome.elapsedSeconds,
+                    ),
                 )
             }
         }
     }
 
-    private suspend fun handleReadAsyncResult(args: TerminalToolArgs): String {
-        val session = args.requireSession()
-        val asyncId = args.requireAsyncId()
-        return when (val outcome =
-            TerminalSessionPool.readAsyncResult(session = session, asyncId = asyncId)) {
-            is TerminalAsyncReadOutcome.Running -> TerminalToolResponse.asyncRunning(
-                stdoutPartial = outcome.stdoutPartial,
-                stderrPartial = outcome.stderrPartial,
-                elapsedSeconds = outcome.elapsedSeconds,
-            )
+    private suspend fun handleClose(args: TerminalToolArgs): RawToolOutcome {
+        val session: String
+        try {
+            session = args.requireSession()
+        } catch (error: IllegalArgumentException) {
+            return refusal(CLOSE, invalidRequestJson(error))
+        }
 
-            is TerminalAsyncReadOutcome.Completed -> TerminalToolResponse.commandSuccess(
-                result = outcome.result,
-                elapsedSeconds = outcome.elapsedSeconds,
-                mergeStderr = args.mergeStderr,
-            )
-
-            is TerminalAsyncReadOutcome.TimedOut -> TerminalToolResponse.commandTimeout(
-                result = outcome.result,
-                elapsedSeconds = outcome.elapsedSeconds,
-                timeoutMs = args.timeoutMs ?: DEFAULT_TIMEOUT_MS,
-                mergeStderr = args.mergeStderr,
-            )
-
-            is TerminalAsyncReadOutcome.Failure -> TerminalToolResponse.failure(
-                failure = outcome.failure,
-                elapsedSeconds = outcome.elapsedSeconds,
-                session = session,
-            )
-
-            is TerminalAsyncReadOutcome.AsyncNotFound -> TerminalToolResponse.asyncNotFound(
-                session = outcome.session,
-                asyncId = outcome.asyncId,
-            )
-
-            is TerminalAsyncReadOutcome.SessionNotFound -> TerminalToolResponse.sessionNotFound(
-                outcome.session
-            )
-
-            is TerminalAsyncReadOutcome.UnexpectedError -> TerminalToolResponse.internalError(
-                throwable = outcome.throwable,
-                elapsedSeconds = outcome.elapsedSeconds,
-            )
+        return dispatch(CLOSE) {
+            when (val outcome = TerminalSessionPool.close(session = session)) {
+                // Including the no-op close of an already-closed session: a session that is not there
+                // cannot have been changed by this call, so it is a confirmed success.
+                TerminalCloseOutcome.Closed -> decided(CLOSE, TerminalToolResponse.closeSuccess())
+                is TerminalCloseOutcome.UnexpectedError -> unconfirmed(
+                    operation = CLOSE,
+                    json = TerminalToolResponse.internalError(outcome.throwable),
+                )
+            }
         }
     }
 
-    private suspend fun handleClose(args: TerminalToolArgs): String {
-        val session = args.requireSession()
-        return when (val outcome = TerminalSessionPool.close(session = session)) {
-            TerminalCloseOutcome.Closed -> TerminalToolResponse.closeSuccess()
-            is TerminalCloseOutcome.UnexpectedError -> TerminalToolResponse.internalError(outcome.throwable)
-        }
+    /** A rejection proven to have happened before the first pool call. */
+    private fun refusal(operation: String, json: String) =
+        rawOutcome(operation = operation, stage = DispatchStage.NOT_DISPATCHED, json = json)
+
+    /** A pool verdict about the operation: a real success or a real failure. */
+    private fun decided(operation: String, json: String) =
+        rawOutcome(operation = operation, stage = DispatchStage.DISPATCHED_CONFIRMED, json = json)
+
+    /** The operation reached the pool and produced no verdict this exit can rely on. */
+    private fun unconfirmed(operation: String, json: String) =
+        rawOutcome(operation = operation, stage = DispatchStage.DISPATCHED_UNCONFIRMED, json = json)
+
+    /**
+     * Runs the pool-call region. A throw here is a *post-dispatch* failure: the handler had already
+     * passed its validation, so it is reported unconfirmed rather than as a retryable failure, no
+     * matter which exception class came out.
+     */
+    private suspend fun dispatch(
+        operation: String,
+        block: suspend () -> RawToolOutcome,
+    ): RawToolOutcome = try {
+        block()
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Throwable) {
+        unconfirmed(operation, TerminalToolResponse.internalError(error))
     }
+
+    private fun invalidRequestJson(error: IllegalArgumentException): String =
+        TerminalToolResponse.invalidRequest(error.message ?: "Invalid terminal request.")
 
     private fun parseArguments(argumentsJson: String): TerminalToolArgs {
         val element = try {
@@ -307,6 +488,16 @@ class TerminalBuiltin(
             isAsync = obj.optionalBoolean("is_async") ?: false,
             asyncId = obj.optionalString("async_id")?.trim(),
         )
+    }
+
+    /**
+     * The operation this request asked for, read with the same rules the handler uses: the same
+     * accepted `action` values and the same case/whitespace tolerance, and nothing else. A request
+     * this version cannot read declares nothing, which constrains no credential — an unparseable
+     * request must not turn a real completion into a false unknown.
+     */
+    override fun declaredOperation(argumentsJson: String): String? {
+        return runCatching { parseArguments(argumentsJson).action.operation }.getOrNull()
     }
 
     private fun TerminalToolArgs.requireIdentity(): String {
@@ -384,13 +575,16 @@ class TerminalBuiltin(
 
     private fun TerminalAction.wireName(): String {
         return when (this) {
-            TerminalAction.OPEN -> "open"
-            TerminalAction.OPEN_AND_EXEC -> "open_and_exec"
-            TerminalAction.EXEC -> "exec"
-            TerminalAction.READ_ASYNC_RESULT -> "read_async_result"
-            TerminalAction.CLOSE -> "close"
+            TerminalAction.OPEN -> OPEN
+            TerminalAction.OPEN_AND_EXEC -> OPEN_AND_EXEC
+            TerminalAction.EXEC -> EXEC
+            TerminalAction.READ_ASYNC_RESULT -> READ_ASYNC_RESULT
+            TerminalAction.CLOSE -> CLOSE
         }
     }
+
+    /** The operation name this action binds its evidence to. */
+    private val TerminalAction.operation: String get() = wireName()
 
     private data class TerminalToolArgs(
         val action: TerminalAction,
@@ -406,6 +600,14 @@ class TerminalBuiltin(
 
     companion object {
         private const val DEFAULT_TIMEOUT_MS = 30_000L
+
+        // The operation names carried as dispatch evidence. They are the same wire names the request
+        // uses, so the evidence and the parsed request can never describe different operations.
+        private const val OPEN = "open"
+        private const val OPEN_AND_EXEC = "open_and_exec"
+        private const val EXEC = "exec"
+        private const val READ_ASYNC_RESULT = "read_async_result"
+        private const val CLOSE = "close"
         private val PUBLIC_IDENTITIES = setOf("user", "root", "shizuku")
         private val REQUEST_KEYS = setOf(
             "action",

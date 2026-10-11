@@ -4,6 +4,7 @@ import com.niki914.libterm.TerminalBytes
 import com.niki914.libterm.TerminalFailure
 import com.niki914.libterm.TerminalIdentity
 import com.niki914.libterm.runtime.CommandResult
+import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolResult
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -60,24 +61,46 @@ object TerminalToolResponse {
         return JsonObject(payload).toString()
     }
 
+    /**
+     * The command was handed to the device asynchronously and is *not* finished.
+     *
+     * The receipt proves acceptance only, so it is reported as a Nexus `unknown` envelope: the
+     * caller must not treat it as a completed action, and the round must not continue with further
+     * side effects until the real result is read back. `elapsed_seconds` describes the handoff, not
+     * a completion.
+     */
     fun asyncAccepted(asyncId: String, elapsedSeconds: Long): String {
-        return JsonObject(
-            mapOf(
-                "async_id" to JsonPrimitive(asyncId),
-                "accepted" to JsonPrimitive(true),
-                "elapsed_seconds" to JsonPrimitive(elapsedSeconds),
-            )
-        ).toString()
+        return BuiltinToolResult.unknown(
+            message = "Async command '$asyncId' was accepted and is still running, so its effect " +
+                "could not be confirmed.",
+            hint = "Poll it with read_async_result before deciding the next step. " +
+                BuiltinToolResult.OUTCOME_UNKNOWN_HINT,
+            data = JsonObject(
+                mapOf(
+                    "async_id" to JsonPrimitive(asyncId),
+                    "accepted" to JsonPrimitive(true),
+                    "elapsed_seconds" to JsonPrimitive(elapsedSeconds),
+                )
+            ),
+        ).toJsonString()
     }
 
+    /**
+     * A poll that found the async command still running. Same reasoning as [asyncAccepted]: partial
+     * output is not a result, so this is unconfirmed rather than a success.
+     */
     fun asyncRunning(stdoutPartial: String, stderrPartial: String, elapsedSeconds: Long): String {
-        return JsonObject(
-            mapOf(
-                "stdout_partial" to JsonPrimitive(stdoutPartial),
-                "stderr_partial" to JsonPrimitive(stderrPartial),
-                "elapsed_seconds" to JsonPrimitive(elapsedSeconds),
-            )
-        ).toString()
+        return BuiltinToolResult.unknown(
+            message = "The async command is still running and has not produced a final result.",
+            hint = "Poll it again with read_async_result. " + BuiltinToolResult.OUTCOME_UNKNOWN_HINT,
+            data = JsonObject(
+                mapOf(
+                    "stdout_partial" to JsonPrimitive(stdoutPartial),
+                    "stderr_partial" to JsonPrimitive(stderrPartial),
+                    "elapsed_seconds" to JsonPrimitive(elapsedSeconds),
+                )
+            ),
+        ).toJsonString()
     }
 
     fun closeSuccess(): String {

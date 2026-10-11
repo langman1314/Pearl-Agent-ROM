@@ -19,9 +19,17 @@ sealed interface LlmStreamEvent {
         val outputText: String? = null,
     ) : LlmStreamEvent
 
+    /**
+     * A tool call did not succeed.
+     *
+     * [unconfirmed] distinguishes "we know it did not happen" from "it may have happened, but the
+     * result was never confirmed". The second case is surfaced to the user as an indeterminate
+     * state — the operation is not replayed, because it may already have taken effect.
+     */
     data class ToolFailed(
         val call: ToolCallStatus,
         val message: String,
+        val unconfirmed: Boolean = false,
     ) : LlmStreamEvent
 
     data class Error(
