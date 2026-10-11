@@ -69,10 +69,44 @@ sealed interface PayloadReading {
  * 2. **A credential is only a credential for the tool and the operation that emit it.** A session
  *    handle comes from a terminal, a snapshot handle from an observation, and an interactive write
  *    receipt reports that input was *written* — not that the command, let alone the phone goal,
- *    finished. A key name alone never authorises the next side effect.
+ *    finished. A key name alone never authorises the next side effect, and neither does a plausible
+ *    shape: an exit code printed by an `open` exit, or a session handle printed by an `exec` exit,
+ *    is a key the payload happened to carry, not proof of the operation that was asked for.
  */
+object OperationName {
+    const val OPEN = "open"
+    const val OPEN_AND_EXEC = "open_and_exec"
+    const val EXEC = "exec"
+    const val READ_ASYNC_RESULT = "read_async_result"
+    const val SEND_LINE = "send_line"
+    const val WRITE = "write"
+    const val INTERRUPT = "interrupt"
+    const val READ = "read"
+    const val CLOSE = "close"
+
+    /**
+     * The operations that run a command to completion, so only they can report an exit code.
+     * `read_async_result` is how an async `exec` really finishes, so it carries one too.
+     */
+    private val COMMAND_OPERATIONS = setOf(OPEN_AND_EXEC, EXEC, READ_ASYNC_RESULT)
+
+    /** The terminal operations whose completion receipt really is a session handle. */
+    private val HANDLE_OPERATIONS = setOf(OPEN, CLOSE)
+
+    /** A null operation is unconstrained: it must not turn a real completion into a false unknown. */
+    fun allowsCommandCompletion(operation: String?): Boolean =
+        operation == null || operation in COMMAND_OPERATIONS
+
+    fun allowsHandleCompletion(operation: String?): Boolean =
+        operation == null || operation in HANDLE_OPERATIONS
+}
+
 object ResultContract {
-    fun read(resultJson: String?, toolName: String? = null): PayloadReading {
+    fun read(
+        resultJson: String?,
+        toolName: String? = null,
+        operation: String? = null,
+    ): PayloadReading {
         val text = resultJson?.trim().orEmpty()
         if (text.isEmpty()) return PayloadReading.Malformed
         val obj = runCatching { Json.parseToJsonElement(text) as? JsonObject }.getOrNull()
@@ -81,10 +115,23 @@ object ResultContract {
             } else {
                 PayloadReading.Opaque
             }
-        return readObject(obj, toolName)
+        return readObject(obj, toolName, operation)
     }
 
-    fun readObject(obj: JsonObject, toolName: String? = null): PayloadReading {
+    /**
+     * Reads a payload in the context of the call that produced it.
+     *
+     * [operation] is what the *request* asked the tool to do, established by the tool from its own
+     * argument rules — so a credential is judged against the operation that can really emit it, not
+     * against the keys the payload happens to carry. It is null when no operation could be
+     * established (an argument-less request, or a request this version cannot parse), and a null
+     * operation constrains nothing: it must never turn a real completion into a false unknown.
+     */
+    fun readObject(
+        obj: JsonObject,
+        toolName: String? = null,
+        operation: String? = null,
+    ): PayloadReading {
         // A structured error is a verdict about the call, so it is read before anything else. It is
         // also the only way to separate a refusal from a dispatched-but-unconfirmed failure: both
         // carry `error`, and only the code tells them apart.
@@ -107,15 +154,22 @@ object ResultContract {
             return PayloadReading.InFlight
         }
 
-        // A synchronous completion is exactly a valid integer exit code.
-        if (obj.containsKey("exit_code")) {
+        // A synchronous completion is an exit code *from an operation that runs a command*. `open`
+        // and `close` never produce one, so a raw exit code printed under either can never complete
+        // it. An unknown operation leaves this unconstrained.
+        if (obj.containsKey("exit_code") && OperationName.allowsCommandCompletion(operation)) {
             val exitCode = obj.integerField("exit_code")
                 ?: return PayloadReading.InvalidCredential
             return PayloadReading.Completed(failed = exitCode != 0, exitCode = exitCode)
         }
 
         if (obj.containsKey("closed")) {
-            return when (obj.booleanField("closed")) {
+            // `closed:true` is a close receipt, so only the close operation may claim it. An exit
+            // that prints one while claiming anything else is self-report, not a verdict.
+            if (operation != null && operation != OperationName.CLOSE) {
+                return PayloadReading.Indeterminate
+            }
+            return when (obj.verifiedBooleanField("closed")) {
                 true -> PayloadReading.Completed(failed = false)
                 else -> PayloadReading.InvalidCredential
             }
@@ -127,10 +181,14 @@ object ResultContract {
         // readable as diagnostics.
         if (obj.containsKey("bytes_written")) return PayloadReading.Indeterminate
 
-        // A handle completes an action only in a tool that can emit it, and only as the right type:
-        // `{"session":true}` is not a session, and a terminal handle reported by a node action is
-        // not evidence that a terminal was opened.
-        if (toolName in TERMINAL_TOOLS && obj.hasTextHandle("session", "identity")) {
+        // A handle completes an action only in a tool that can emit it, for an operation that really
+        // emits one, and only as the right type: `{"session":true}` is not a session, a terminal
+        // handle reported by a node action is not evidence that a terminal was opened, and a session
+        // handle returned by `exec` proves the terminal was opened — not that the command finished.
+        if (toolName in TERMINAL_TOOLS &&
+            OperationName.allowsHandleCompletion(operation) &&
+            obj.hasTextHandle("session", "identity")
+        ) {
             return PayloadReading.Completed(failed = false)
         }
         if (toolName in OBSERVATION_TOOLS && obj.hasSnapshotHandle()) {
@@ -145,8 +203,12 @@ object ResultContract {
      * refusal. Only these may be handed back verbatim — anything else, including a readable but
      * verdict-less body, leaves a side effect unaccounted for.
      */
-    fun provesDecided(resultJson: String?, toolName: String? = null): Boolean =
-        when (read(resultJson, toolName)) {
+    fun provesDecided(
+        resultJson: String?,
+        toolName: String? = null,
+        operation: String? = null,
+    ): Boolean =
+        when (read(resultJson, toolName, operation)) {
             is PayloadReading.Completed, PayloadReading.Refused -> true
             PayloadReading.Indeterminate,
             PayloadReading.InFlight,
@@ -242,8 +304,12 @@ object ResultContract {
         return primitive.intOrNull
     }
 
-    private fun JsonObject.booleanField(key: String): Boolean? =
-        (this[key] as? JsonPrimitive)?.booleanOrNull
+    /** A boolean credential only when it really is a JSON boolean, never the string `"true"`. */
+    private fun JsonObject.verifiedBooleanField(key: String): Boolean? {
+        val primitive = this[key] as? JsonPrimitive ?: return null
+        if (primitive.isString) return null
+        return primitive.booleanOrNull
+    }
 
     /** Tools that can open a terminal session, and so may legitimately report a session handle. */
     val TERMINAL_TOOLS = setOf("terminal", "ssh_terminal")

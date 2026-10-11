@@ -6,6 +6,7 @@ import com.niki914.libterm.SshOpenOptions
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinTool
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolRequest
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolResult
+import com.niki914.nexus.agentic.chat.agentic.buildin.DeclaredOperationProducing
 import com.niki914.nexus.agentic.chat.agentic.buildin.DispatchStage
 import com.niki914.nexus.agentic.chat.agentic.buildin.RawJsonBuiltinTool
 import com.niki914.nexus.agentic.chat.agentic.buildin.RawOutcomeProducing
@@ -32,7 +33,8 @@ import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
-class SshTerminalBuiltin : BuiltinTool(), RawJsonBuiltinTool, RawOutcomeProducing {
+class SshTerminalBuiltin : BuiltinTool(), RawJsonBuiltinTool, RawOutcomeProducing,
+    DeclaredOperationProducing {
     override val name: String = "ssh_terminal"
 
     override val description: String =
@@ -101,6 +103,16 @@ class SshTerminalBuiltin : BuiltinTool(), RawJsonBuiltinTool, RawOutcomeProducin
                 json = TerminalToolResponse.internalError(error),
             )
         }
+    }
+
+    /**
+     * The operation this request asked for, read with the same rules the handler uses: the same
+     * accepted `action` values and the same case/whitespace tolerance, and nothing else. A request
+     * this version cannot read declares nothing, which constrains no credential — an unparseable
+     * request must not turn a real completion into a false unknown.
+     */
+    override fun declaredOperation(argumentsJson: String): String? {
+        return runCatching { parseArguments(argumentsJson).action.operation }.getOrNull()
     }
 
     private suspend fun handleOpen(args: SshTerminalToolArgs): RawToolOutcome {

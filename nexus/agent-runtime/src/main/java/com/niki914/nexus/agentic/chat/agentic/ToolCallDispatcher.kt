@@ -4,8 +4,10 @@ import com.niki914.nexus.agentic.chat.LocalTool
 import com.niki914.nexus.agentic.chat.ResolvedTools
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolExecutor
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolResult
+import com.niki914.nexus.agentic.chat.agentic.buildin.DeclaredOperationProducing
 import com.niki914.nexus.agentic.chat.agentic.buildin.DispatchStage
 import com.niki914.nexus.agentic.chat.agentic.buildin.ToolExecution
+import com.niki914.nexus.agentic.chat.agentic.buildin.ToolResultSource
 import com.niki914.nexus.agentic.chat.agentic.custom.CustomToolExecutor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
@@ -54,7 +56,16 @@ class ToolCallDispatcher(
         // A custom tool runs a shell command, so it is a side effect like any other and takes the
         // same barrier. Its arguments live in the tool definition, not in the call, so the call
         // identity is the tool name plus the call id.
-        return executeGuarded(toolName = tool.name, argumentsJson = "{}", callId = callId) {
+        return executeGuarded(
+            toolName = tool.name,
+            argumentsJson = "{}",
+            callId = callId,
+            // A custom tool's arguments live in its definition and running its command is not one of
+            // the terminal operations a credential could be bound to, so it declares none — but it
+            // does report the stage its own command result proved.
+            declaredOperation = null,
+            declarationKnown = false,
+        ) {
             customToolExecutor.executeWithEvidence(tool)
         }
     }
@@ -71,10 +82,17 @@ class ToolCallDispatcher(
             .filterIsInstance<LocalTool.Builtin>()
             .firstOrNull { it.name == name }
         if (builtinTool != null) {
+            // Read from the request *before* dispatching, so the operation this call is judged
+            // against is what the caller asked for — never something the result reports about
+            // itself. A tool that cannot establish one declares nothing.
+            val operationProducing = builtinTool.tool as? DeclaredOperationProducing
+            val declaredOperation = operationProducing?.declaredOperation(argumentsJson)
             return executeGuarded(
                 toolName = name,
                 argumentsJson = argumentsJson,
                 callId = callId,
+                declaredOperation = declaredOperation,
+                declarationKnown = operationProducing != null,
             ) {
                 builtinToolExecutor.executeWithEvidence(
                     tool = builtinTool.tool,
@@ -94,6 +112,8 @@ class ToolCallDispatcher(
                 toolName = name,
                 argumentsJson = argumentsJson,
                 callId = callId,
+                declaredOperation = null,
+                declarationKnown = false,
             ) {
                 // The custom tool executor owns the real execution result, so it reports the stage
                 // alongside the JSON: a blocked command never ran, and a dispatched one that lost
@@ -120,6 +140,8 @@ class ToolCallDispatcher(
         toolName: String,
         argumentsJson: String,
         callId: String?,
+        declaredOperation: String?,
+        declarationKnown: Boolean,
         block: suspend () -> ToolExecution,
     ): String = executionMutex.withLock {
         when (val decision = actionGuard.beforeCall(toolName, argumentsJson, callId)) {
@@ -129,6 +151,8 @@ class ToolCallDispatcher(
                 toolName = toolName,
                 argumentsJson = argumentsJson,
                 callId = callId,
+                declaredOperation = declaredOperation,
+                declarationKnown = declarationKnown,
                 block = block,
             )
         }
@@ -144,6 +168,8 @@ class ToolCallDispatcher(
         toolName: String,
         argumentsJson: String,
         callId: String?,
+        declaredOperation: String?,
+        declarationKnown: Boolean,
         block: suspend () -> ToolExecution,
     ): String {
         val round = actionGuard.generation
@@ -174,18 +200,35 @@ class ToolCallDispatcher(
             callId = callId,
             resultJson = execution.resultJson,
             round = round,
-            evidence = execution.stage?.let { stage ->
-                DispatchEvidence(stage = stage, operation = execution.operation ?: toolName)
-            },
+            evidence = DispatchEvidence(
+                stage = execution.stage,
+                // The operation the *request* asked for, taken from the tool's own argument rules
+                // before the call ran. A tool that can establish one but could not for this request
+                // declares *nothing* — and nothing is not "reuse whatever the exit claims", because
+                // that would let a result name the operation that releases it. Only a tool with no
+                // notion of operations at all keeps reporting one from its exit.
+                operation = if (declarationKnown) {
+                    declaredOperation
+                } else {
+                    execution.operation ?: toolName
+                },
+                source = execution.source,
+            ),
         )
     }
 }
 
 /**
- * Stage evidence for one dispatched call: what the tool's own exit proved, and which operation it
- * performed. [operation] is what binds a completion credential to the action that may emit it.
+ * What the guard needs to know about one call beyond its payload: which stage the tool's own exit
+ * proved, which operation the request declared, and which branch produced the result.
+ *
+ * [stage] is null when the branch that ran reports no stage at all — nothing about the call's
+ * dispatch is known, so the stage may not be used to release anything. [operation] is null when no
+ * operation could be established from the request, and then it constrains nothing. [source] records
+ * the branch that really ran, so a raw body with no exit behind it can never be read as a verdict.
  */
 data class DispatchEvidence(
-    val stage: DispatchStage,
-    val operation: String,
+    val stage: DispatchStage?,
+    val operation: String?,
+    val source: ToolResultSource? = null,
 )

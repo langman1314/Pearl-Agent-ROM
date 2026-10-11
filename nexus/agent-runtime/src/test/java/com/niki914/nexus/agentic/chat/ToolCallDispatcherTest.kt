@@ -490,8 +490,9 @@ class ToolCallDispatcherTest {
 
     @Test
     fun executeLocalTool_rawCompletionIsDedupedWhileUnreadablePayloadIsReportedAsUnknown() = runTest {
-        // A raw terminal completion: readable, so it keeps its own shape but must still be recorded
-        // under its call id — forgetting it is what lets the same command run twice.
+        // A raw terminal-shaped payload produced by a tool that is *not* wired to the evidence
+        // channel: nothing binds this body to a real exit, so its readable `exit_code` is a claim
+        // rather than proof, and the round stops instead of being released.
         val completed = RawPayloadBuiltinTool("terminal", """{"exit_code":0,"stdout":"done"}""")
         val unreadable = RawPayloadBuiltinTool("terminal_broken", "{")
         val later = RecordingBuiltinTool("gesture")
@@ -513,26 +514,49 @@ class ToolCallDispatcherTest {
 
         val arguments = """{"action":"exec","session":"user","command":"echo harmless"}"""
         val first = dispatcher.executeLocalTool("terminal", arguments, callId = "terminal-1")
-        assertEquals("""{"exit_code":0,"stdout":"done"}""", first)
+        // Contract change (itemized in the correction report). Previously this asserted
+        // `assertEquals("""{"exit_code":0,"stdout":"done"}""", first)`: the raw text was handed back
+        // verbatim, so a caller reading a printable exit code would treat an unvouched-for body as a
+        // completion. The source of a result is part of what it proves, so a raw body with no
+        // evidence behind it is now canonicalised to an unconfirmed envelope — equal-or-stronger:
+        // it still dedupes (asserted immediately below) and it can no longer be misread as proof.
+        assertEquals("false", jsonField(first, "ok"))
+        assertEquals("unknown", jsonField(first, "outcome"))
 
         // The same call id replays the recorded result; the tool is not invoked a second time.
         val replayed = dispatcher.executeLocalTool("terminal", arguments, callId = "terminal-1")
-        assertEquals(first, replayed)
+        assertEquals("a replay must hand back exactly what the first call returned", first, replayed)
 
-        // A fresh call id is a different call, so it really executes.
-        dispatcher.executeLocalTool("terminal", arguments, callId = "terminal-2")
+        // A fresh call id in the same round is refused rather than quietly dispatched again: the
+        // call that may already have landed is not repeated.
+        val afterLatch = dispatcher.executeLocalTool("terminal", arguments, callId = "terminal-2")
+        assertEquals("ACTION_STATE_INDETERMINATE", jsonField(afterLatch, "code"))
 
-        // An undecodable payload from a side-effecting call comes back as an unknown envelope, not
-        // as raw text a caller could mistake for a retryable failure.
-        val broken = dispatcher.executeLocalTool("terminal_broken", "{}", callId = "broken-1")
+        // A fresh round, so the latch does not mask the next observation: an undecodable payload
+        // from a side-effecting call comes back as an unknown envelope, not as raw text a caller
+        // could mistake for a retryable failure.
+        val brokenRound = newDispatcher(completed, unreadable, later)
+        val broken = brokenRound.executeLocalTool("terminal_broken", "{}", callId = "broken-1")
         assertEquals("false", jsonField(broken, "ok"))
         assertEquals("unknown", jsonField(broken, "outcome"))
 
-        // And the round is latched, so the next side effect is refused rather than dispatched.
-        val refusal = dispatcher.executeLocalTool("gesture", """{"start_x":1}""", callId = "call-9")
+        // And that round is latched too, so the next side effect is refused rather than dispatched.
+        val refusal = brokenRound.executeLocalTool("gesture", """{"start_x":1}""", callId = "call-9")
         assertEquals("ACTION_STATE_INDETERMINATE", jsonField(refusal, "code"))
         assertEquals(0, later.invocationCount)
     }
+
+    private fun newDispatcher(
+        vararg tools: BuiltinTool,
+    ): ToolCallDispatcher = ToolCallDispatcher(
+        builtinToolExecutor = BuiltinToolExecutor(BuiltinToolRegistry(tools.toList())),
+        customToolExecutor = CustomToolExecutor(),
+        currentTools = {
+            ResolvedTools(
+                builtinTools = tools.map { LocalTool.Builtin(it.name, it.name, it) },
+            )
+        },
+    )
 
     private fun jsonField(json: String, key: String): String =
         Json.parseToJsonElement(json).jsonObject[key]!!.jsonPrimitive.content

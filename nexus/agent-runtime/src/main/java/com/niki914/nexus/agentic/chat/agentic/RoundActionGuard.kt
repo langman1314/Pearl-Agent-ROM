@@ -3,6 +3,7 @@ package com.niki914.nexus.agentic.chat.agentic
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolResult
 import com.niki914.nexus.agentic.chat.agentic.buildin.DispatchStage
 import com.niki914.nexus.agentic.chat.agentic.buildin.ToolOutcome
+import com.niki914.nexus.agentic.chat.agentic.buildin.ToolResultSource
 
 /**
  * Tracks side-effecting tool calls inside a single agent round.
@@ -129,6 +130,14 @@ class RoundActionGuard {
      * async receipts, observation YAML — are left alone; refusing to read the screen because of
      * them would blind the agent.
      *
+     * **Where the verdict comes from is part of the question, not a detail of it.** A payload is
+     * only read as a verdict in the context of the branch that produced it ([DispatchEvidence]):
+     * the source says whether the tool went through the typed result path, the evidence channel, or
+     * is simply a raw body, and the declared operation says what the request asked for. A raw body
+     * with no evidence behind it is unconfirmed *whatever it says* — an exit code, a refusal code, a
+     * close receipt, a success envelope, or a session handle it printed itself — because a body that
+     * was never bound to a real exit cannot be the thing that releases the barrier.
+     *
      * Returns the result the caller should report, which for an unreadable side-effecting payload
      * is a proper `unknown` envelope rather than the raw text.
      */
@@ -147,36 +156,56 @@ class RoundActionGuard {
         // they would be self-report, and self-report is not evidence. The stage is not taken on
         // faith either: "nothing was dispatched" only counts when the payload really is a readable
         // refusal or failure, so a branch that claimed it while returning a broken body still
-        // latches instead of releasing the barrier.
-        val payloadIsDecided = decoded != null || ResultContract.provesDecided(resultJson, toolName)
+        // latches instead of releasing the barrier. The operation is the one the *request* declared,
+        // never the one the payload claims to have performed.
+        val declared = evidence?.operation
+        val payloadIsDecided = decoded != null ||
+            ResultContract.provesDecided(resultJson, toolName, declared)
         val notDispatched = evidence?.stage == DispatchStage.NOT_DISPATCHED && payloadIsDecided
+        // A *released* payload is one this guard has bound to the call that produced it: a non-raw
+        // typed result, a raw body whose branch carried the stage, or a custom command. A raw body
+        // with no evidence object behind it never qualifies, however readable it looks: nothing
+        // proved that this exit performed the request, so its keys are a claim, not a verdict.
+        // A caller that passes no evidence at all — a direct call with no executing branch to ask —
+        // keeps the payload reading this guard has always applied; only an exit that really ran and
+        // reported itself as raw-without-evidence is refused a release.
+        val released = evidence?.source != ToolResultSource.RAW_WITHOUT_EVIDENCE
+        // A side effect whose release the guard refused: it really ran, and nothing bound its body
+        // to an exit, so the body cannot be the thing that says what happened.
+        val releaseRefused = !readOnly && !notDispatched && !released
         // A side effect that reached the tool but left no decided verdict — empty, truncated,
-        // malformed, in flight, an unproven failure, or a credential that cannot carry the meaning
-        // it claims — is unconfirmed. A pre-dispatch refusal and a proven completion pass this, and
-        // the tool name matters: a handle is only a handle in a tool that can emit it.
+        // malformed, in flight, an unproven failure, a credential that cannot carry the meaning it
+        // claims for *this* operation, or a raw body no exit vouched for — is unconfirmed. A
+        // pre-dispatch refusal and a proven completion pass this, and the tool name matters: a
+        // handle is only a handle in a tool that can emit it.
         val unreadableSideEffect = !readOnly && !notDispatched &&
             decoded == null &&
-            !ResultContract.provesDecided(resultJson, toolName)
+            !(released && ResultContract.provesDecided(resultJson, toolName, declared))
         // The stage alone never decides either: a branch that claims a decision still has to hand
         // back a payload that carries one, so a definite stage over an unreadable body stays
         // unconfirmed rather than releasing the barrier.
         val stageUnconfirmed = evidence?.stage == DispatchStage.DISPATCHED_UNCONFIRMED
         val stageUndecided = evidence?.stage == DispatchStage.DISPATCHED_CONFIRMED &&
             decoded == null &&
-            !ResultContract.provesDecided(resultJson, toolName)
+            !(released && ResultContract.provesDecided(resultJson, toolName, declared))
         val outcome = when {
             // A payload that declares itself unconfirmed stays unconfirmed whatever the stage says:
             // the stage may refuse to *release* a call, never release one the payload flags.
             decoded != null && decoded.outcome == ToolOutcome.UNKNOWN -> ToolOutcome.UNKNOWN
+            // A raw body with no evidence behind it cannot release the barrier, so it is never
+            // deliberately released: the round stops instead. This is checked after the payload's
+            // own unknown, so a tool that already said "unconfirmed" keeps its own wording.
+            releaseRefused -> ToolOutcome.UNKNOWN
             readOnly -> null
             notDispatched -> null
             stageUnconfirmed || stageUndecided -> ToolOutcome.UNKNOWN
             decoded != null -> decoded.outcome
-            // No evidence at all: an unwired raw side effect keeps the conservative payload reading.
+            // A released payload that carries a real decision of its own: a non-raw typed result
+            // this guard did not have to decode as an envelope, or a proven completion.
             unreadableSideEffect -> ToolOutcome.UNKNOWN
             else -> null
         }
-        val unaccounted = unreadableSideEffect || stageUnconfirmed || stageUndecided
+        val unaccounted = unreadableSideEffect || stageUnconfirmed || stageUndecided || releaseRefused
         // The caller is handed the canonical result, never the raw payload of an unconfirmed or
         // self-contradicting exit: a payload that says `ok=true` next to `outcome=unknown`, or a
         // verdict-less body, would otherwise be reported as if the action had been confirmed.
@@ -190,6 +219,19 @@ class RoundActionGuard {
                     hint = decoded.hint.takeIf { it.isNotBlank() }
                         ?: BuiltinToolResult.OUTCOME_UNKNOWN_HINT,
                     data = decoded.data,
+                ).toJsonString()
+
+            // A raw body no exit vouched for: whatever it printed — a success envelope, an exit
+            // code, a close receipt, a refusal code — is a claim, not a verdict, so it is reported
+            // as unconfirmed with its readable diagnostics kept.
+            releaseRefused ->
+                BuiltinToolResult.unknown(
+                    message = "'$toolName' returned raw output that no exit vouched for, so this " +
+                        "version cannot treat the text it printed as proof of what happened. Its " +
+                        "effect could not be confirmed.",
+                    hint = "Re-read the screen with screen_content to see what actually happened, " +
+                        "then continue in a new round. " + BuiltinToolResult.OUTCOME_UNKNOWN_HINT,
+                    data = ResultContract.diagnostics(resultJson),
                 ).toJsonString()
 
             unaccounted && decoded != null ->

@@ -39,6 +39,10 @@ class BuiltinToolExecutor(
      * same call, so the work never runs twice. Everything else reports no stage: the guard then
      * treats a side effect conservatively instead of accepting a payload's own claim, while the
      * `BuiltinToolResult` envelope that non-raw tools return still speaks for itself.
+     *
+     * The [ToolExecution.source] records which branch really ran. It is taken from the branch this
+     * executor entered, never from the result body: a raw tool is free to print a body that looks
+     * exactly like a typed envelope, and that resemblance is precisely what must not be believed.
      */
     suspend fun executeWithEvidence(
         tool: BuiltinTool,
@@ -58,20 +62,31 @@ class BuiltinToolExecutor(
                         resultJson = outcome.resultJson,
                         stage = outcome.stage,
                         operation = outcome.operation,
+                        source = ToolResultSource.RAW_WITH_EVIDENCE,
                     )
                 }
 
-                tool is RawJsonBuiltinTool -> ToolExecution(resultJson = tool.invokeRawJson(request))
+                tool is RawJsonBuiltinTool -> ToolExecution(
+                    resultJson = tool.invokeRawJson(request),
+                    source = ToolResultSource.RAW_WITHOUT_EVIDENCE,
+                )
 
-                else -> ToolExecution(resultJson = tool.invoke(request).toJsonString())
+                else -> ToolExecution(
+                    resultJson = tool.invoke(request).toJsonString(),
+                    source = ToolResultSource.TYPED,
+                )
             }
         } catch (throwable: Throwable) {
             if (throwable is CancellationException) {
                 throw throwable
             }
             // The tool threw instead of answering. Whether anything reached the device is exactly
-            // what is unknown here, so no stage is claimed and the guard stays conservative.
-            ToolExecution(resultJson = UnexpectedToolFailure(tool.name, throwable).toResultJson())
+            // what is unknown here, so no stage is claimed and the guard stays conservative. The
+            // body is a Nexus envelope this executor built itself, so it is typed, not raw.
+            ToolExecution(
+                resultJson = UnexpectedToolFailure(tool.name, throwable).toResultJson(),
+                source = ToolResultSource.TYPED,
+            )
         }
     }
 

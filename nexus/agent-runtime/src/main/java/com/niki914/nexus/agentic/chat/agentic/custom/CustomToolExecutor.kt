@@ -4,6 +4,7 @@ import com.niki914.nexus.agentic.chat.LocalTool
 import com.niki914.nexus.agentic.chat.agentic.buildin.BuiltinToolResult
 import com.niki914.nexus.agentic.chat.agentic.buildin.DispatchStage
 import com.niki914.nexus.agentic.chat.agentic.buildin.ToolExecution
+import com.niki914.nexus.agentic.chat.agentic.buildin.ToolResultSource
 import com.niki914.nexus.agentic.chat.agentic.shell.ShellCommandSafetyPolicy
 import com.niki914.nexus.agentic.chat.agentic.shell.TerminalCommandOutcome
 import com.niki914.nexus.agentic.chat.agentic.shell.TerminalSessionPool
@@ -69,6 +70,7 @@ class CustomToolExecutor(
             ToolExecution(
                 resultJson = buildSuccessJson(command = command, stdout = result.stdout),
                 stage = DispatchStage.DISPATCHED_CONFIRMED,
+                source = ToolResultSource.CUSTOM_COMMAND,
             )
         } else if (result.unconfirmed) {
             // The command had already been handed to the terminal when this happened, so its effect
@@ -90,15 +92,22 @@ class CustomToolExecutor(
             ToolExecution(
                 resultJson = buildFailureJson(command = command, message = result.message),
                 stage = DispatchStage.DISPATCHED_CONFIRMED,
+                source = ToolResultSource.CUSTOM_COMMAND,
             )
         }
     }
 
-    private fun refused(json: String) =
-        ToolExecution(resultJson = json, stage = DispatchStage.NOT_DISPATCHED)
+    private fun refused(json: String) = ToolExecution(
+        resultJson = json,
+        stage = DispatchStage.NOT_DISPATCHED,
+        source = ToolResultSource.CUSTOM_COMMAND,
+    )
 
-    private fun unconfirmed(json: String) =
-        ToolExecution(resultJson = json, stage = DispatchStage.DISPATCHED_UNCONFIRMED)
+    private fun unconfirmed(json: String) = ToolExecution(
+        resultJson = json,
+        stage = DispatchStage.DISPATCHED_UNCONFIRMED,
+        source = ToolResultSource.CUSTOM_COMMAND,
+    )
 
     private fun buildSuccessJson(command: String, stdout: String): String {
         return JsonObject(
